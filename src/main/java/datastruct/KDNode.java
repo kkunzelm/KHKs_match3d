@@ -1,4 +1,4 @@
-
+package datastruct;
 
 
 import vecmath.*;

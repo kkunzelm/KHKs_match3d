@@ -2,7 +2,7 @@
 // Dieses File ist eine "Studie". Ich wollte unbedingt die target-to-source Abbildung bei 2.5 D Daten verstehen.
 // Es hat mich eine Woche gekostet. Ich habe Umwege gemacht, über Raytracing, baryzentrische Interpolation, ...
 // Ich habe viel gelernt, z. B. die Verwendung von List, Arraylist etc. 
-// Ich habe auch die sinnvolle Anwendung für Objekte (hier Triangle3D) mit ihren eigenen Methoden schätzen gelernt!!
+// Ich habe auch die sinnvolle Anwendung für Objekte (hier datastruct.Triangle3D) mit ihren eigenen Methoden schätzen gelernt!!
 // Die wichtigste Erkenntnis war aber, dass ich das Problem nicht über den anschaulichen Ansatz: Skizzen und probieren 
 // lösen konnte. Erst als ich mit Papier und Kugelschreiber über die Transformationen ausgehend von der Ebenengleichung
 // das Problem mit Matrizen gelöst hatte, konnte ich es in 30 min implementieren und es hat auf Anhieb funktioniert.
@@ -22,6 +22,8 @@
 
 
 import Jama.Matrix;
+import datastruct.Triangle3D;
+import datastruct.Vec3;
 import ij.ImagePlus;
 import ij.gui.NewImage;
 import ij.io.FileInfo;
@@ -56,7 +58,7 @@ public class KHKsRangeDataTransformJ {
         ImagePlus impTransformedImage;
         FileInfo fi = imp.getFileInfo();
         ImageProcessor ip = imp.getProcessor(); 
-        ip = Match3d_withFiducialMarkersAndICPv2.setZeroToNan(ip);       // masking: zero = NaN
+        ip = Match3d_withFiducialMarkersAndICPv2_1.setZeroToNan(ip);       // masking: zero = NaN
         int w = ip.getWidth();
         int h = ip.getHeight();
         
@@ -109,7 +111,7 @@ public class KHKsRangeDataTransformJ {
         Matrix invRotation = rotation.inverse();
         
         boolean printInfos = true;
-        Matrix invTM = Match3d_withFiducialMarkersAndICPv2.getInverseTransformationMatrix(transformationMatrix, printInfos);
+        Matrix invTM = Match3d_withFiducialMarkersAndICPv2_1.getInverseTransformationMatrix(transformationMatrix, printInfos);
         
         // the target point at position u,v is mapped with the inverse transformation to position x,y of source data set
         //directionAsMatrix = invRotation.times(directionAsMatrix);
@@ -219,12 +221,12 @@ public class KHKsRangeDataTransformJ {
         double scaleY = fi.pixelHeight;
         
         ImageProcessor ip = imp.getProcessor(); 
-        ip = Match3d_withFiducialMarkersAndICPv2.setZeroToNan(ip);       // masking: zero = NaN
+        ip = Match3d_withFiducialMarkersAndICPv2_1.setZeroToNan(ip);       // masking: zero = NaN
         int width = ip.getWidth();
         int height = ip.getHeight();
  
         boolean printInfos = true;
-        Matrix invTM = Match3d_withFiducialMarkersAndICPv2.getInverseTransformationMatrix(transformationMatrix, printInfos);
+        Matrix invTM = Match3d_withFiducialMarkersAndICPv2_1.getInverseTransformationMatrix(transformationMatrix, printInfos);
   
         // List with triangles
         List triangleList = new ArrayList();      
@@ -328,7 +330,7 @@ public class KHKsRangeDataTransformJ {
         double scaleY = fi.pixelHeight;
         
         ImageProcessor ip = imp.getProcessor(); 
-        ip = Match3d_withFiducialMarkersAndICPv2.setZeroToNan(ip);       // masking: zero = NaN
+        ip = Match3d_withFiducialMarkersAndICPv2_1.setZeroToNan(ip);       // masking: zero = NaN
         int width = ip.getWidth();
         int height = ip.getHeight();
  

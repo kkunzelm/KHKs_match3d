@@ -1,4 +1,4 @@
-// KHK: status 30.4.2014
+package datastruct;// KHK: status 30.4.2014
 // KHK: I downloaded this file with the accompaning files 
 // KHK: I used it at an intermediate devolopment state for my target to source transformation
 //      it worked fine, but was very slow
@@ -172,7 +172,7 @@ public class Vec3
 						this.z + (rGen.nextGaussian() * 0.5) * epsilon
 						);
 		/*
-		return new Vec3(this.x + (Math.random() - 0.5) * epsilon,
+		return new datastruct.Vec3(this.x + (Math.random() - 0.5) * epsilon,
 						this.y + (Math.random() - 0.5) * epsilon,
 						this.z + (Math.random() - 0.5) * epsilon
 						);
@@ -181,6 +181,6 @@ public class Vec3
 
 	public String toString()
 	{
-		return "Vec3(" + x + ", " + y + ", " + z + ")";
+		return "datastruct.Vec3(" + x + ", " + y + ", " + z + ")";
 	}
 }

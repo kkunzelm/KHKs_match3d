@@ -1,3 +1,5 @@
+package datastruct;
+
 /**
  * Copyright 2011 JogAmp Community. All rights reserved.
  *

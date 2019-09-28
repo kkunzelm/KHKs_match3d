@@ -31,17 +31,19 @@ In both ASCII and binary versions of STL, the facet normal should be a unit vect
  
 25.4.2014: Modification of SimpleSTL_Writer
 
-In this version I used the Vec3 datatype to generate the triangles. 
+In this version I used the datastruct.Vec3 datatype to generate the triangles.
 The file is used for debugging purposes to analyse the triangles - in context with the T2sTransformationRangeData debugging.
 
 */
 
 
 import java.io.*;
+
+import datastruct.Triangle3D;
+import datastruct.Vec3;
 import ij.*;
 import ij.process.*;
 import ij.measure.*;
-import java.util.Vector;
 import ij.plugin.filter.PlugInFilter;
 import ij.io.*;
 import java.util.ArrayList;
@@ -210,7 +212,7 @@ public class SimpleSTL_WriterVec3Based implements PlugInFilter {
                     
                     // vertices of triangle
                     Vec3 A = new Vec3();
-                    Vec3 B = new Vec3();    
+                    Vec3 B = new Vec3();
                     Vec3 C = new Vec3();
                     
                     // first vertex

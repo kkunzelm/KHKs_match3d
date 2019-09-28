@@ -1,4 +1,4 @@
-// KHK: status 30.4.2014
+package datastruct;// KHK: status 30.4.2014
 // KHK: I downloaded this file with the accompaning files 
 // KHK: I used it at an intermediate devolopment state for my target to source transformation
 //      it worked fine, but was very slow
@@ -23,6 +23,9 @@
  *
  * @author 
  */
+
+import datastruct.Ray;
+import datastruct.Vec3;
 
 import static java.lang.Math.*;
 
@@ -197,14 +200,14 @@ public class Triangle3D {
     
     /** Fuehrt einen Schnitttest mit einem Strahl durch . */
     public Vec3 intersectionTest( Ray r){
-        // Schnitttest Ray -> Ebene 
+        // Schnitttest datastruct.Ray -> Ebene
         // KHK: "Strahl parallel zur Ebene" oder "Strahl in Ebene" Test
         double rn = r.direction.dot (n);
         if ( abs(rn) < 1e-15){              // KHK Bedingung: vec_u dot vec_n darf nicht null sein (ist im Nenner nicht definiert) 
             return null;
         }
 
-        // Wie weit hat es der Ray von seinem Ursprung zum Schnittpunkt ?
+        // Wie weit hat es der datastruct.Ray von seinem Ursprung zum Schnittpunkt ?
         // KHK: positive Richtung/negative Richtung - alpha > 0 => Punkt über grid, alpha < 0 Punkt unter grid
         alpha1 = (d - r.origin.dot(n)) / rn;         // alpha ist Skalierungsfaktor für Strahl vec_q = vec_p + alpha * vec_u (vec_p = Aufpunkt, vec_u = Richtung genormt, vec_q = Geradengleichung in Normalenform
 

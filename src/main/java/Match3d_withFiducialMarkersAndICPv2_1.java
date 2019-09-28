@@ -1,4 +1,5 @@
 import Jama.*;
+import datastruct.KDNode;
 import ij.*;
 import ij.gui.*;
 import ij.io.*;

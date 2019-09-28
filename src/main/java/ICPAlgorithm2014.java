@@ -1,10 +1,11 @@
 import Jama.*;
-import java.util.Arrays;
+
+import datastruct.KDNode;
 import vecmath.*;
 
 //todo Root Mean Square ... durchdenken.
 
-// KDNode.java muss im gleichen Verzeichnis sein!
+// datastruct.KDNode.java muss im gleichen Verzeichnis sein!
 
 // hier wurde die rechenzeitintensive Berechnung der nächsten Nachbarn durch einen Suchbaum optimiert
 // siehe z. B. file:///KHKsData/usr2/Recherchen/3d-matching-und-microCT-news/ICP-Erlangen-Java/Kd-tree.htm 
@@ -67,10 +68,10 @@ public class ICPAlgorithm2014 {
     }
     
     
-    // public void init(Point3d m[], Point3d d[], KDNode mT, KDNode dT, Point3d mC0, Point3d mC1) {
+    // public void init(Point3d m[], Point3d d[], datastruct.KDNode mT, datastruct.KDNode dT, Point3d mC0, Point3d mC1) {
     public void init(Point3d m[], 
                      Point3d d[], 
-                     KDNode mT, 
+                     KDNode mT,
                      Point3d mC0, Point3d mC1, 
                      Matrix3d rotationAfterPrealignment, Vector3d translationAfterPrealignment,
                      ParameterICP refineParameters) {
@@ -757,7 +758,7 @@ public class ICPAlgorithm2014 {
     // this was the original quicksort algorithm
     
       // this is my interpretation of a quicksort algorithm from 
-      // just as in KDNode.java I had to replace the original QS algorith 
+      // just as in datastruct.KDNode.java I had to replace the original QS algorith
       // with my interpretation of QS as I always got stack overflow errors
       // with the original version
     

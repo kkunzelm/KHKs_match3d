@@ -4,6 +4,10 @@
  * and open the template in the editor.
  */
 
+import datastruct.Ray;
+import datastruct.Triangle3D;
+import datastruct.Vec3;
+
 /**
  *
  * @author kkunzelm
@@ -41,7 +45,7 @@ public class KHKs_RaytracerTest {
         Triangle3D sampleTriangle = new Triangle3D();
         sampleTriangle.makeTriangle3D(vertices);
 
-        // Ray
+        // datastruct.Ray
         Ray sampleRay;
         Vec3 origin = new Vec3();
         Vec3 direction = new Vec3();
@@ -64,7 +68,7 @@ public class KHKs_RaytracerTest {
 
 
         if (result != null){
-            System.out.println("Ray hits triangle at:" + result.toString());
+            System.out.println("datastruct.Ray hits triangle at:" + result.toString());
         }
         else {
             System.out.println("Triangle missed");
