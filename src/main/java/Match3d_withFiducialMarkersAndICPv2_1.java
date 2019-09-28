@@ -22,7 +22,7 @@ import javax.swing.JFileChooser;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.filechooser.FileNameExtensionFilter;
-import javax.vecmath.*;
+import vecmath.*;
 
 
 
@@ -1033,7 +1033,7 @@ public Matrix svd(double[][] correlationMatrixK){
      *
      * @param centroid1 Source image center
      * @param centroid2 Target image center
-     * @param rotationMatrix R
+     * @param rotationMatrixR
      * @return translation Translation vector 
      */
 private double[] computeTranslation(double[] centroid1, double[] centroid2, double[][] rotationMatrixR){
@@ -1810,7 +1810,7 @@ class WriteMatrix{
      
     /** Returns a {@code String} representation of a {@code double} value.
         @param d the {@code double} value to be represented.
-        @return a new {@code String} object containing a string representation of {@code d}. The maximum number of decimals used in representing {@code d} can be specified with method {@link #decs(int)}. The value of {@code d} is rounded to the specified maximum number of decimals. The returned string will contain less than the maximum number of decimals if {@code d} can be represented exactly that way. In particular, if {@code d} is equal to an integer value, the returned string represents that integer value, without decimals and preceding decimal separator symbol. The string returned when {@code Double.isNaN(d)} yields {@code true} can be specified with method {@link #nan(String)}. Similarly, the string returned when {@code Double.isInfinite(d)} yields {@code true} can be specified with method {@link #inf(String)}. The returned string is "0" if the absolute value of {@code d} is less than the limit set with method {@link #chop(double)}.
+        @return a new {@code String} object containing a string representation of {@code d}. The maximum number of decimals used in representing {@code d} can be specified with method . The value of {@code d} is rounded to the specified maximum number of decimals. The returned string will contain less than the maximum number of decimals if {@code d} can be represented exactly that way. In particular, if {@code d} is equal to an integer value, the returned string represents that integer value, without decimals and preceding decimal separator symbol. The string returned when {@code Double.isNaN(d)} yields {@code true} can be specified with method . Similarly, the string returned when {@code Double.isInfinite(d)} yields {@code true} can be specified with method . The returned string is "0" if the absolute value of {@code d} is less than the limit set with method .
 	*/
     String d2s(final double d) {            
 		
@@ -1862,13 +1862,13 @@ class ReadMatrix {
 			transformationMatrix = load(file);
                         
 		} catch (OutOfMemoryError e) {
-			TJ.error("Not enough memory for this operation");
+			IJ.error("Not enough memory for this operation");
 			
 		} catch (UnknownError e) {
-			TJ.error("Could not create output image for some reason.\nPossibly there is not enough free memory");
+			IJ.error("Could not create output image for some reason.\nPossibly there is not enough free memory");
 			
 		} catch (IllegalArgumentException e) {
-			TJ.error(e.getMessage());
+			IJ.error(e.getMessage());
 			
 		}
                 return transformationMatrix;

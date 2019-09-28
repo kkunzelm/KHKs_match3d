@@ -18,6 +18,7 @@ import java.awt.event.ActionListener;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.File;
+import transformj.*;
 
 /**
  * Performs an affine transformation of range data. 
@@ -191,13 +192,13 @@ class modifiedTJAffine {
                         System.out.println("Interpolation Method: "+ interpolationMethod);
 			
 		} catch (OutOfMemoryError e) {
-			TJ.error("Not enough memory for this operation");
+			IJ.error("Not enough memory for this operation");
 			
 		} catch (UnknownError e) {
-			TJ.error("Could not create output image for some reason.\nPossibly there is not enough free memory");
+			IJ.error("Could not create output image for some reason.\nPossibly there is not enough free memory");
 			
 		} catch (IllegalArgumentException e) {
-			TJ.error(e.getMessage());
+			IJ.error(e.getMessage());
 			
 		}
 	}

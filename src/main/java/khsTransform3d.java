@@ -5,7 +5,7 @@
 
 
 
-import javax.vecmath.*;
+import vecmath.*;
 /**
  *
  * @author kkunzelm

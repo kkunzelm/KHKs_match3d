@@ -1,6 +1,6 @@
 import Jama.*;
 import java.util.Arrays;
-import javax.vecmath.*;
+import vecmath.*;
 
 //todo Root Mean Square ... durchdenken.
 

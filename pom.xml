@@ -99,16 +99,26 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Plugin specific dependencies -->
         <dependency>
             <groupId>gov.nist.math</groupId>
             <artifactId>jama</artifactId>
             <version>1.0.3</version>
         </dependency>
-
+<!--        <dependency>-->
+<!--            <groupId>javax.vecmath</groupId>-->
+<!--            <artifactId>vecmath</artifactId>-->
+<!--            <version>1.5.2</version>-->
+<!--        </dependency>-->
         <dependency>
-            <groupId>org.scijava</groupId>
-            <artifactId>vecmath</artifactId>
-            <version>1.6.0-scijava-2</version>
+            <groupId>sc.fiji</groupId>
+            <artifactId>imagescience</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>sc.fiji</groupId>
+            <artifactId>TransformJ_</artifactId>
+            <version>4.0.0</version>
         </dependency>
 
     </dependencies>

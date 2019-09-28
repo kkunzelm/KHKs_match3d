@@ -1,7 +1,7 @@
 
 
 
-import javax.vecmath.*;
+import vecmath.*;
 
 
 /* Simple class for forming and manipulating kD-trees

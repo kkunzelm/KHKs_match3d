@@ -8,7 +8,7 @@ import java.awt.*;
 import static java.lang.Math.*;
 import java.util.*;
 import java.util.List;
-import javax.vecmath.*;
+import vecmath.*;
 
 // Point based rigid registration
 // 
@@ -495,7 +495,7 @@ public Matrix svd(double[][] correlationMatrixK){
      *
      * @param centroid1 Source image center
      * @param centroid2 Target image center
-     * @param rotationMatrix R
+     * @param rotationMatrixR
      * @return translation Translation vector 
      */
 private float[] calculateTranslation(float[] centroid1, float[] centroid2, double[][] rotationMatrixR){

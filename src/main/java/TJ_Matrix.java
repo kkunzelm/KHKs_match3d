@@ -33,6 +33,7 @@ import java.util.Vector;
 import imagescience.image.Axes;
 import imagescience.transform.Transform;
 import imagescience.utility.Formatter;
+import transformj.TJ;
 
 public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusListener, WindowListener {
 	
@@ -68,10 +69,12 @@ public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusL
 	private static int daxis = 0;
 	
 	public void run(String arg) {
-		
-		if (!TJ.libcheck()) return;
-		
-		TJ.log(TJ.name()+" "+TJ.version()+": Matrix");
+
+		if (IJ.getVersion().compareTo("1.50a") < 0) {
+			IJ.error("This plugin requires ImageJ version 1.50a or higher");
+			return;
+		}
+		IJ.log(TJ.name()+" "+TJ.version()+": Matrix");
 		
 		final Frame parent = (IJ.getInstance() != null) ? IJ.getInstance() : new Frame();
 		dialog = new Dialog(parent,TJ.name()+": Matrix",true);
@@ -272,9 +275,9 @@ public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusL
 					tpr = tfm.duplicate();
 					tfm.rotate(angle,axis);
 					refresh();
-					TJ.log("Rotated the matrix "+rangle+" degrees around "+axes[raxis]);
+					IJ.log("Rotated the matrix "+rangle+" degrees around "+axes[raxis]);
 				} catch (Exception x) {
-					TJ.error("Invalid rotation angle");
+					IJ.error("Invalid rotation angle");
 				}
 			}
 			
@@ -299,9 +302,9 @@ public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusL
 					tpr = tfm.duplicate();
 					tfm.scale(factor,axis);
 					refresh();
-					TJ.log("Scaled the matrix by a factor of "+sfactor+" in "+axes[saxis]);
+					IJ.log("Scaled the matrix by a factor of "+sfactor+" in "+axes[saxis]);
 				} catch (Exception x) {
-					TJ.error("Invalid scaling factor");
+					IJ.error("Invalid scaling factor");
 				}
 			}
 			
@@ -331,9 +334,9 @@ public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusL
 					tpr = tfm.duplicate();
 					tfm.shear(factor,axis,drive);
 					refresh();
-					TJ.log("Sheared the matrix by a factor of "+hfactor+" in "+axes[haxis]+" by "+axes[daxis]);
+					IJ.log("Sheared the matrix by a factor of "+hfactor+" in "+axes[haxis]+" by "+axes[daxis]);
 				} catch (Exception x) {
-					TJ.error("Invalid shearing factor");
+					IJ.error("Invalid shearing factor");
 				}
 			}
 			
@@ -358,9 +361,9 @@ public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusL
 					tpr = tfm.duplicate();
 					tfm.translate(distance,axis);
 					refresh();
-					TJ.log("Translated the matrix by "+tdistance+" in "+axes[taxis]);
+					IJ.log("Translated the matrix by "+tdistance+" in "+axes[taxis]);
 				} catch (Exception x) {
-					TJ.error("Invalid translation distance");
+					IJ.error("Invalid translation distance");
 				}
 			}
 			
@@ -370,25 +373,24 @@ public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusL
 				tfm.invert();
 				refresh();
 				tpr = tmp;
-				TJ.log("Inverted the matrix");
+				IJ.log("Inverted the matrix");
 			} catch (Throwable x) {
-				TJ.error(x.getMessage());
+				IJ.error(x.getMessage());
 			}
 			
 		} else if (source == reset) {
 			tpr = tfm.duplicate();
 			tfm.reset();
 			refresh();
-			TJ.log("Reset the matrix to the identity matrix");
+			IJ.log("Reset the matrix to the identity matrix");
 			
 		} else if (source == copy) {
 			try {
 				final StringSelection ss = new StringSelection(string("","\t","\n"));
 				Toolkit.getDefaultToolkit().getSystemClipboard().setContents(ss,this);
-				TJ.log("Copied the matrix to the clipboard");
-				TJ.status("Copied matrix to clipboard");
+				IJ.log("Copied the matrix to the clipboard");
 			} catch (Throwable x) {
-				TJ.error("Failed to copy the matrix to the clipboard");
+				IJ.error("Failed to copy the matrix to the clipboard");
 			}
 			
 		} else if (source == print) {
@@ -400,7 +402,7 @@ public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusL
 				tfm.set(tpr);
 				refresh();
 				tpr = tmp;
-				TJ.log("Undone last change");
+				IJ.log("Undone last change");
 			}
 			
 		} else if (source == load) {
@@ -410,20 +412,18 @@ public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusL
 				load(file);
 				refresh();
 				tpr = tmp;
-				TJ.log("Loaded matrix from "+file);
-				TJ.status("Loaded matrix from "+file);
+				IJ.log("Loaded matrix from "+file);
 			} catch (Throwable x) {
-				TJ.error(x.getMessage());
+				IJ.error(x.getMessage());
 			}
 			
 		} else if (source == save) {
 			final String file = file(FileDialog.SAVE);
 			if (file != null) try {
 				save(file);
-				TJ.log("Saved matrix to "+file);
-				TJ.status("Saved matrix to "+file);
+				IJ.log("Saved matrix to "+file);
 			} catch (Throwable x) {
-				TJ.error(x.getMessage());
+				IJ.error(x.getMessage());
 			}
 			
 		} else if (source == close) {
@@ -455,10 +455,10 @@ public class TJ_Matrix implements PlugIn, ActionListener, ClipboardOwner, FocusL
 								tpr = tfm.duplicate();
 								tfm.set(r,c,d);
 								refresh();
-								TJ.log("Updated matrix");
+								IJ.log("Updated matrix");
 							}
 						} catch (Throwable x) {
-							TJ.error("Invalid input value (will be reverted)");
+							IJ.error("Invalid input value (will be reverted)");
 							refresh();
 						}
 						return;
