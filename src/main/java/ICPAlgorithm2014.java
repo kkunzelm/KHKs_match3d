@@ -16,690 +16,274 @@ class ICPAlgorithm2014 {
 
 	private static final double ERROR_BOUND = 0.0001;
 	private static final double ERROR_DIFF = 0.00001; // 0.1% change
-	boolean debug = true;
-	private Matrix3d rotation;
-	private Vector3d translation;
-	private Point3d[] modelPoints;
-	private Point3d[] dataPoints;
+
+	private Matrix3d manualRotation;
+	private Vector3d manualTranslation;
+	private Point3d[] targetModelPoints; // Target model
+	private Point3d[] baseDataPoints; // Base 3D model: is matched to target
 	private KDNode modelTree;
 	private Point3d modelCorner0;
 	private Point3d modelCorner1;
-	private Point3d[] workPoints;
-	private int[] corresp;
-	private int[] dist_order;
-	private int[] model_unique;
-	private int minimum_valid_points; // Mindestanzahl gültiger Pixel
+	private Point3d[] baseWorkPoints;
+	private int[] correspondingPoints;
+	private int[] distanceOrder;
+	private int[] modelUnique;
+	private int minimumValidPoints; // Mindestanzahl gültiger Pixel
 	private boolean refine;
-	private boolean refine_unique; // klingt als ob jeder Punkt berücksichtigt wird
+	private boolean refineUnique; // klingt als ob jeder Punkt berücksichtigt wird
 
-	private boolean refine_clip; // clipping ab bestimmter Position im Abstandshistogram,
-									// z. B. nur 75 % der niedrigeren Abstände berücksichtigt,
-									// Rest der Punktepaare verworfen
-	private double refine_clip_par;
-	private boolean refine_clamp; // gleiches wie clip. aber über statistisches Mass, z. B. > 3x mittlerer
-									// Abstand, definiert
-	private double refine_clamp_par;
-	private boolean refine_sd; // Punkte mit Abstand von sd_par mal stdDev + mean werden ausgewählt
-	private double refine_sd_par;
-	private boolean refine_sparse; // nur jeder xte Punkte wird verwendet
-	private double refine_sparse_par;
+	// clipping ab bestimmter Position im Abstandshistogram, z.B. nur 75 % der niedrigeren Abstände berücksichtigt,
+	// Rest der Punktepaare verworfen
+	private boolean refineClip;
+	private double refineClipParameter;
+
+	// gleiches wie clip. aber über statistisches Mass, z. B. > 3x mittlerer Abstand, definiert
+	private boolean refineClamp;
+	private double refineClampParameter;
+
+	private boolean refineSd; // Punkte mit Abstand von sd_par mal stdDev + mean werden ausgewählt
+	private double refineSdParameter;
+
+	private boolean refineSparse; // nur jeder xte Punkte wird verwendet
+	private double refineSparseParameter;
 
 	private int steps;
 
-	// call this class like this:
 
-	// ICPAlgorithm2012 instanceOfICP;
-	// instanceOfICP = new ICPAlgorithm2012(modelPoints, dataPoints, rotationMatrix,
-	// translationVector);
-	// instanceOfICP.runICP();
-
-	// Constructor
+	/** call this class like this:
+	 * ICPAlgorithm2012 instanceOfICP;
+	 * instanceOfICP = new ICPAlgorithm2012(modelPoints, dataPoints, rotationMatrix, translationVector);
+	 * instanceOfICP.runICP();
+	 *
+	 * Constructor
+ 	**/
 	public ICPAlgorithm2014() {
 		boolean firstRun = true;
 	}
 
-	// public void init(Point3d m[], Point3d d[], datastruct.KDNode mT,
-	// datastruct.KDNode dT, Point3d mC0, Point3d mC1) {
 	public void init(Point3d[] m, Point3d[] d, KDNode mT, Point3d mC0, Point3d mC1, Matrix3d rotationAfterPrealignment,
 			Vector3d translationAfterPrealignment, ParameterICP refineParameters) {
 
 		// assign the important values
 		// 3D data
-		modelPoints = m;
-		dataPoints = d;
+		targetModelPoints = m;
+		baseDataPoints = d;
 
 		modelTree = mT;
 		modelCorner0 = mC0;
 		modelCorner1 = mC1;
 
 		// results from landmark based prealignment
-		rotation = rotationAfterPrealignment;
-		translation = translationAfterPrealignment;
+		manualRotation = rotationAfterPrealignment;
+		manualTranslation = translationAfterPrealignment;
 
-		// diese Parameter könnte man in der Maske, in der die Bilder fürs Matching
-		// aufgerufen werden
+		// diese Parameter könnte man in der Maske, in der die Bilder fürs Matching aufgerufen werden
 		// setzen/editierbar machen.
-
 		refine = true;
-		refine_unique = refineParameters.getRefineUnique(); // nearest points are used
-		refine_clip = refineParameters.getRefineClip(); // true;
-		refine_clip_par = refineParameters.getRefineClipPar(); // = 0.75; // the value is arbitrary here... 0.75 was
-																// used for one special example only
-		refine_clamp = refineParameters.getRefineClamp(); // statistically determined outlier test
-		refine_clamp_par = refineParameters.getRefineClampPar(); // multiples of standard deviations which are
+		refineUnique = refineParameters.getRefineUnique(); // nearest points are used
+		refineClip = refineParameters.getRefineClip(); // true;
+		// the value is arbitrary here... 0.75 was used for one special example only
+		refineClipParameter = refineParameters.getRefineClipPar(); // = 0.75;
+		refineClamp = refineParameters.getRefineClamp(); // statistically determined outlier test
+		refineClampParameter = refineParameters.getRefineClampPar(); // multiples of standard deviations which are
 																	// clipped/clamped
-		refine_sd = refineParameters.getRefineSd();
-		refine_sd_par = refineParameters.getRefineSdPar();
-		refine_sparse = refineParameters.getRefineSparse();
-		refine_sparse_par = refineParameters.getRefineSparsePar(); // data reduction, here 50 %
-		minimum_valid_points = refineParameters.getMinValidPoints();
+		refineSd = refineParameters.getRefineSd();
+		refineSdParameter = refineParameters.getRefineSdPar();
+		refineSparse = refineParameters.getRefineSparse();
+		refineSparseParameter = refineParameters.getRefineSparsePar(); // data reduction, here 50 %
+		minimumValidPoints = refineParameters.getMinValidPoints();
 
 		// some preparations
-		dist_order = new int[d.length];
-		if (refine_unique) {
-			model_unique = new int[m.length];
+		distanceOrder = new int[d.length];
+		if (refineUnique) {
+			modelUnique = new int[m.length];
 		} else {
-			model_unique = null;
+			modelUnique = null;
 		}
 
 	}
 
+	/*##################################################################################################################
+	*
+	* 										MAIN ALGORITHM
+	*
+	##################################################################################################################*/
+
 	// wichtigste methode... der eigentliche Kern des ICP Matching
 	public double[][] runICP() {
-		Point3d point;
+		//--------------------------------------------------------------------------------------------------------------
+		//	Initialize variables
+		//--------------------------------------------------------------------------------------------------------------
+		boolean runVerbose = false;
 
-		double x0, x1, y0, y1, z0, z1;
-
-		boolean run_verbose = false;
-
-		int dist_order_count;
-		int dist_order_write;
+		int distanceOrderCount;
+		int distOrderWrite;
 
 		// start calculating
+		if (runVerbose)	System.out.println("Calculating...");
 
-		if (run_verbose)
-			System.out.println("Calculating...");
-
-		Matrix3d rotMatrix;// = new Matrix3d();
-		Vector3d transVector;
+		// init rotation & translation matrices with results from landmark based prealignment
+		Matrix3d rotationMatrix = manualRotation;
+		Vector3d translationVector = manualTranslation;
 
 		// KHK for debugging:
-		// rotMatrix.setIdentity();
+		// rotationMatrix.setIdentity();
 
-		rotMatrix = rotation;
-		transVector = translation;
+		if (runVerbose)	System.out.println("Rotation Matrix:" + rotationMatrix);
+		if (runVerbose)	System.out.println(rotationMatrix.toString());
+		if (runVerbose)	System.out.println("Translation Vector:" + translationVector);
 
-		if (run_verbose)
-			System.out.println("Rotation Matrix:" + rotMatrix);
-		if (run_verbose)
-			System.out.println(rotMatrix.toString());
-		if (run_verbose)
-			System.out.println("Translation Vector:" + transVector);
+		baseWorkPoints = new Point3d[baseDataPoints.length];
+		correspondingPoints = new int[baseWorkPoints.length];
+		Point3d baseDataCenter = new Point3d();
+		Point3d targetModelCenter = new Point3d();
 
-		workPoints = new Point3d[dataPoints.length];
-		corresp = new int[workPoints.length];
-		Point3d dataCenter = new Point3d();
-		Point3d modelCenter = new Point3d();
-
-		GMatrix rMatrix = new GMatrix(3, 3); // GMatrix = general matrix
+		GMatrix rotMatrix = new GMatrix(3, 3); // GMatrix = general matrix
 		GMatrix addMatrix = new GMatrix(3, 3);
 
 		// rotation matrix, as two-dim. array
-		double[][] r_array = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
+		double[][] rotationArray = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
 
 		double error;
-		double last_error = Double.POSITIVE_INFINITY;
-		double last_stdDev = Double.POSITIVE_INFINITY;
+		double stdDev;
+		double lastError = Double.POSITIVE_INFINITY;
+		double lastStdDev = Double.POSITIVE_INFINITY;
 
+
+		//--------------------------------------------------------------------------------------------------------------
+		//	First transformation of Work Points
+		//--------------------------------------------------------------------------------------------------------------
 		/*
-		 * as far as I understand the algorithm, the procedure is to find the
-		 * corresponding point-pairs via modelPoints and workPoints (workPoints is a
-		 * copy of dataPoints) based on the workPoints to which the rotation and
-		 * translation is applied the next set of corresponding point-pairs is
-		 * determined in the next iteration the rotation and translation, however, is
-		 * always determined in total using the modelPoints and dataPoints.
+		 * as far as I understand the algorithm, the procedure is to find the corresponding point-pairs via modelPoints
+		 * and workPoints (workPoints is a copy of dataPoints) based on the workPoints to which the rotation and
+		 * translation is applied the next set of corresponding point-pairs is determined in the next iteration the
+		 * rotation and translation, however, is always determined in total using the modelPoints and dataPoints.
 		 */
-
-		// ******************************************
-		// - apply transform to data points, creating new set
-		// *******************************************
-		for (int i = 0; i < dataPoints.length; i++) {
-			workPoints[i] = new Point3d(dataPoints[i]);
-			// hier: erst Rotation, dann Translation...
-			rotMatrix.transform(workPoints[i]);
-			workPoints[i].add(transVector);
-			// System.out.println("DataPoints und Workpoints:"+dataPoints[i]+"
-			// "+workPoints[i]);
-		}
-
-		if (run_verbose)
-			System.out.println("Finished initial transform");
+		transformBaseWorkPoints(rotationMatrix, translationVector, baseWorkPoints, runVerbose);
 
 		boolean finished = false;
 
-		// steps=0;
 
-		// *******************************************************************************************************************************
 
+		//--------------------------------------------------------------------------------------------------------------
+		//	Iterations
+		//--------------------------------------------------------------------------------------------------------------
 		while (!finished) {
 
 			steps++;
 
-			// - find corresponding pairs into int list
-			for (int i = 0; i < workPoints.length; i++) {
-				point = workPoints[i];
-				// KHK den Teil mit x0, x1 verstehe ich nicht.
-				// So wie ich das verstehe, müssen alle Werte gleich Null werden und werden sie
-				// auch.
-				// Soll das sicherstellen, dass es keine Werte außerhalb der Bounding-Box gibt?
+			//----------------------------------------------------------------------------------------------------------
+			//	find corresponding points
+			//----------------------------------------------------------------------------------------------------------
+			findNearestNeighbor(runVerbose);
 
-				// x0..z1 are the distances OUTSIDE the bounding box
-				x0 = modelCorner0.x - point.x;
-				if (x0 < 0.0) {
-					x0 = 0.0;
-				}
-				x1 = point.x - modelCorner1.x;
-				if (x1 < 0.0) {
-					x1 = 0.0;
-				}
-				y0 = modelCorner0.y - point.y;
-				if (y0 < 0.0) {
-					y0 = 0.0;
-				}
-				y1 = point.y - modelCorner1.y;
-				if (y1 < 0.0) {
-					y1 = 0.0;
-				}
-				z0 = modelCorner0.z - point.z;
-				if (z0 < 0.0) {
-					z0 = 0.0;
-				}
-				z1 = point.z - modelCorner1.z;
-				if (z1 < 0.0) {
-					z1 = 0.0;
-				}
-
-				corresp[i] = modelTree.findNearest(point, Double.POSITIVE_INFINITY, (x0 * x0) + (x1 * x1),
-						(y0 * y0) + (y1 * y1), (z0 * z0) + (z1 * z1));
-
-			}
-
-			if (run_verbose) {
-				System.out.println("Computed nearest points");
-			}
-
-			// dist_order lists the indices of the workPoints (dataPoints)
-			// in increasing distance to their corresponding points.
-			// dist_order_count describes how many "used" data/work points
-			// are actually in the list. All beyond this count have no
-			// corresponding model point.
-			// dist_order_write is a writing index
-
-			if ((dist_order == null) || (dist_order.length < workPoints.length)) {
-				dist_order = new int[workPoints.length];
+			/*
+			* dist_order lists the indices of the workPoints (dataPoints) in increasing distance to their corresponding
+			* points.
+			* distanceOrderCount describes how many "used" data/work points are actually in the list.
+			* All beyond this count have no corresponding model point.
+			* distOrderWrite is a writing index
+			*/
+			if ((distanceOrder == null) || (distanceOrder.length < baseWorkPoints.length)) {
+				distanceOrder = new int[baseWorkPoints.length];
 				System.out.println("Warning: Redoing dist_order");
 			}
 
 			// init ("unsorted");
-			dist_order_write = 0;
-			for (int i = 0; i < dist_order.length; i++) {
-				if (corresp[i] >= 0) {
-					dist_order[dist_order_write++] = i;
+			distOrderWrite = 0;
+			for (int i = 0; i < distanceOrder.length; i++) {
+				if (correspondingPoints[i] >= 0) {
+					distanceOrder[distOrderWrite++] = i;
 				}
 			}
-			dist_order_count = dist_order_write;
+			distanceOrderCount = distOrderWrite;
 
-			// KHK todo: clip_gradient implementieren
+
+			//----------------------------------------------------------------------------------------------------------
+			//	refine corresponding points
+			//----------------------------------------------------------------------------------------------------------
+			/* Here, the set of corresponding points can be further trimmed down to improve convergence criteria, such
+			* as rejecting pairs with too high a distance (multiple of average distance, or a certain percentage of
+			* points
+			*/
 			if (refine) {
-
-				// REFINE HERE
-				// Here, the set of corresponding points can be further trimmed
-				// down to improve convergence criteria, such as rejecting
-				// pairs with too high a distance (multiple of average distance,
-				// or a certain percentage of points
-
-				if (refine_sparse) {
-
-					// kill a certain percentage of points.
-					// This works WITHOUT sorting!
-					double sparse_accum = 0.0;
-					dist_order_write = 0;
-					for (int i = 0; i < dist_order_count; i++) {
-						sparse_accum += refine_sparse_par;
-						if (sparse_accum < 1.0) {
-							// write back work point index into list
-							dist_order[dist_order_write++] = dist_order[i];
-						} else {
-							sparse_accum -= 1.0;
-						}
-					}
-
-					dist_order_count = dist_order_write; // update
-
-				}
-
-				// bring in sorted order
-				// KHK das war der Originalaufruf: sort(0, dist_order_count-1);
-				sortKH(0, dist_order_count - 1); // Aufruf meiner Variante
-
-				// sort(0, 5);
-
-				// Code for printing all distances, used with no starting
-				// transformation
-				// for (int i=0; i<dist_order.length; i++) {
-				// System.out.println(sort_dist(i));
-				// }
-				// System.exit(0);
-
-				if (refine_clip) {
-					// kill percentage of points with highest distance
-					// The two faces have about 75% overlap
-					// (approximated value from non-transformed distance values)
-					dist_order_count = (int) ((double) dist_order_count * refine_clip_par);
-					// no need to flush, since we won't be touching them
-					// ever again!
-					// for (int i=(int)(dist_order_count); i<dist_order.length; i++) {
-					// corresp[dist_order[i]] = -1; // no corresp point for you!
-					// }
-				}
-
-				if (refine_clamp) {
-
-					// kill all points farther away than a multiple (= refine_clamp_par) of
-					// the last reported mean distance and a multiple (= refine_clamp_par) of
-					// the current median distance
-
-					double med_distance = refine_clamp_par * sort_dist(dist_order_count / 2);
-					double last_distance = refine_clamp_par * last_error;
-					dist_order_write = 0;
-					for (int i = 0; i < dist_order_count; i++) {
-						double di = sort_dist(i);
-						if ((di <= last_distance) && (di <= med_distance)) {
-							// write back work point index into list
-							dist_order[dist_order_write++] = dist_order[i];
-						}
-					}
-					System.out.println("refine_clamp");
-					System.out.println("last_stdDev: " + last_stdDev + "\n" + "lastError: " + last_error + "\n"
-							+ "workPoints.length: " + workPoints.length + "\n" + "dist_order_count: " + dist_order_count
-							+ "\n" + "dist_order_write: " + dist_order_write);
-					dist_order_count = dist_order_write; // update
-
-				}
-
-				if (refine_sd) { // sd = standardDeviation
-					// kill all points farther away than a multiple of the standard deviation from
-					// the current mean distance
-					double distance = refine_sd_par * last_stdDev;
-					dist_order_write = 0;
-					for (int i = 0; i < dist_order_count; i++) {
-						double di = sort_dist(i);
-						if (di <= distance) {
-							// write back work point index into list
-							dist_order[dist_order_write++] = dist_order[i];
-						}
-					}
-					System.out.println("refine_sd");
-					System.out.println("last_stdDev: " + last_stdDev + "\n" + "lastError: " + last_error + "\n"
-							+ "workPoints.length: " + workPoints.length + "\n" + "dist_order_count: " + dist_order_count
-							+ "\n" + "dist_order_write: " + dist_order_write);
-					System.out.println();
-					dist_order_count = dist_order_write; // update
-
-				}
-
-				if (refine_unique) {
-					// allow only the closest work point per model point
-					// EXTREMELY SLOW!
-
-					dist_order_write = 0;
-					for (int i = 0; i < dist_order_count; i++) {
-						int m = corresp[dist_order[i]]; // model point in question
-						if (model_unique[m] == 0) {
-							model_unique[m] = 1;
-							dist_order[dist_order_write++] = dist_order[i];
-						}
-						// if (m != -1) {
-						// for (int j=i+1; j<dist_order_count; j++) {
-						// if (corresp[dist_order[j]] == m) {
-						// corresp[dist_order[j]] = -1;
-						// }
-						// }
-						// }
-					}
-
-					dist_order_count = dist_order_write;
-				}
-
-			} // point refining on/off
-
-			// KHK: ab hier Berechung des Centroids
-
-			// *************************** KHK explanation
-
-			/*
-			 * this method implements formula (3) of Kanatani/Horn and others the weight is
-			 * set to "1". It is a scaling factor only. KHK exactly the same method is
-			 * implemented for the corresponding landmark registration Formula (3):
-			 *
-			 * K = SUM(vectorPoint1 * vectorPoint'1^T) --> ^T means transposed
-			 *
-			 * in detail:
-			 *
-			 * Each point consists of 3 coordinates x, y, z Each point is treated as a
-			 * vector. The coordinates of these vectors are arranged vertically ( x1 )
-			 * Point1 = ( y1 ) ( z1 )
-			 * 
-			 * Point1'^T = (x'1, y'1, z'1)
-			 * 
-			 * The mark "'" means the corresponding point in the second image
-			 * 
-			 * The multiplication of the two 3x1 vectors results in a 3x3 matrix =
-			 * correlationMatrixK. The matrices off all points are summarized and result in
-			 * K
-			 * 
-			 */
-			// *************************** KHK explanation
-
-			// - estimate rotation and translation
-			dataCenter.set(0.0, 0.0, 0.0);
-			modelCenter.set(0.0, 0.0, 0.0);
-
-			rMatrix.setZero(); // GMatrix
-			addMatrix.setZero(); // GMatrix
-
-			// Berechnung des Centroids indem alle Punkte summiert werden und durch die Zahl
-			// der Punkte dividiert wird
-			// jede einzelne Achse (x,y,z) wird separat addiert und dividiert (-> Division =
-			// .scale)
-
-			for (int i = 0; i < dist_order_count; i++) {
-				int j = dist_order[i]; // = i if unsorted
-				// if (corresp[i] >= 0) {
-				dataCenter.add(dataPoints[j]);
-				modelCenter.add(modelPoints[corresp[j]]);
-				// c++;
-				// }
+				distanceOrderCount = refineCorrespondingPoints(distanceOrderCount, lastError, lastStdDev);
 			}
 
-			if (dist_order_count > 0) {
-				dataCenter.scale(1.0 / ((double) dist_order_count)); // scale = hier Division durch Zahl der addierten
-																		// Punkte
-				modelCenter.scale(1.0 / ((double) dist_order_count)); // d.h. wir haben den Mittelwert aller Punkte =
-																		// Centroid!
-			}
 
-			if (run_verbose)
-				System.out.println("Centers:");
-			if (run_verbose)
-				System.out.println("  " + modelCenter);
-			if (run_verbose)
-				System.out.println("  " + dataCenter);
+			//----------------------------------------------------------------------------------------------------------
+			//	find centroids
+			//----------------------------------------------------------------------------------------------------------
+			calculateCentroids(runVerbose, distanceOrderCount, baseDataCenter, targetModelCenter, rotMatrix, addMatrix);
 
-			GVector dataCenterVector = new GVector(dataCenter); // * Constructs a new GVector (javax.vecmath) and copies
-																// the initial values
-																// * from the specified tuple - in this case a Point3d.
-																// * Point 3d = java.lang.Object
-																// +--javax.vecmath.Tuple3d +--javax.vecmath.Point3d
-			GVector modelCenterVector = new GVector(modelCenter);
-			GVector dPoint = new GVector(3);
-			GVector mPoint = new GVector(3);
-			for (int i = 0; i < dist_order_count; i++) {
-				int j = dist_order[i]; // = i if unsorted
-				// if (corresp[j] >= 0) {
-				dPoint.set(dataPoints[j]);
-				mPoint.set(modelPoints[corresp[j]]); // ACHTUNG diese Zeile ist enorm wichtig!!!!
-														// hier wird bei jedem Durchgang eine bessere Zuordnung für die
-														// Punktelisten verwendet. Dadurch wird die Rotation und
-														// Translation
-														// auch immer bessere Ergebnisse erzielen.
-														// Es ist aber immer nur eine Rotation/Translation... es wird
-														// hier nichts akkumuliert!!
 
-				dPoint.sub(dataCenterVector); // Punkte Liste - von den einzelnen Punkten wird der Centroid abgezogen
-												// * Sets the value of this vector to the vector difference of itself
-												// * and vector (this = this - vector).
-				mPoint.sub(modelCenterVector);
-				addMatrix.mul(mPoint, dPoint); // addMatrix ist als GMatrix 3x3 definiert
-												// addMatrix entspricht Kanatani's im Prinzip: vectorPoint1 *
-												// vectorPoint'1^T
-												// mPoint = row vector, dPoint = column vector
-												// Vektormultiplikation, mPoint, dPoint sind Vektoren
-				/*
-				 * Computes the outer product of the two vectors; multiplies the the first
-				 * vector by the transpose of the second vector and places the matrix result
-				 * into this matrix. This matrix must be be as big or bigger than
-				 * getSize(v1)xgetSize(v2).
-				 */
-
-				rMatrix.add(addMatrix); /**
-										 * Sets the value of this matrix to sum of itself and matrix m1.
-										 * 
-										 * @param m1
-										 *            the other matrix (rMatrix wird bei ca. Z 386 mit Null
-										 *            initialisiert
-										 * 
-										 *            rMatrix entspricht: K = SUM(vectorPoint1 * vectorPoint'1^T) in der
-										 *            Kanatani Nomenklatur
-										 */
-
-			}
-
-			if (run_verbose) {
-				System.out.println(
-						"Finished to calculate the correlation matrix K: Accumulated centers and rotation Matrix");
-			}
-
-			// if (dist_order_count >= 3) { //... war Originalaufruf
-			// Modifikation für minimum_valid_points
-			System.out.println("Minimum valid points: " + minimum_valid_points);
-			if (dist_order_count >= minimum_valid_points) {
-				if (run_verbose) {
+			//----------------------------------------------------------------------------------------------------------
+			//	Minimize
+			//----------------------------------------------------------------------------------------------------------
+			// if (distanceOrderCount >= 3) { //... war Originalaufruf: Modifikation für minimumValidPoints
+			System.out.println("Minimum valid points: " + minimumValidPoints);
+			if (distanceOrderCount >= minimumValidPoints) {
+				if (runVerbose) {
 					System.out.println("Minimizing...");
 					System.out.println("Kanatani's Correlation Matrix K: ");
-					System.out.println(rMatrix.toString());
+					System.out.println(rotMatrix.toString());
 				}
 
-				// KHK: ab hier SVD singular value decomposition
-				// use Jama, not javax.vecmath (buggy)
+				//------------------------------------------------------------------------------------------------------
+				//	calculate SVD singular value decomposition
+				//------------------------------------------------------------------------------------------------------
+				calcSingularValueComposition(runVerbose, rotationMatrix, translationVector, baseDataCenter,
+						targetModelCenter, rotMatrix, rotationArray
+				);
 
-				rMatrix.getRow(0, r_array[0]); // getRow(int row, double[] array) Places the values of the specified row
-												// into the array parameter.
-				rMatrix.getRow(1, r_array[1]);
-				rMatrix.getRow(2, r_array[2]);
+				//------------------------------------------------------------------------------------------------------
+				//	Apply motion (preliminary)
+				//------------------------------------------------------------------------------------------------------
+				applySVDTransformation(runVerbose, rotationMatrix, translationVector);
 
-				Matrix rJamaMatrix = new Matrix(r_array, 3, 3);
 
-				Matrix uJama;
-				Matrix wJama;
-				Matrix vJama;
-				if (run_verbose) {
-					System.out.println("  computing SUV");
-				}
-				SingularValueDecomposition svdJama = new SingularValueDecomposition(rJamaMatrix);
-				uJama = svdJama.getU();
-				wJama = svdJama.getS(); // diagonal matrix
-				vJama = svdJama.getV();
-
-				GMatrix U = new GMatrix(3, 3);
-				GMatrix W = new GMatrix(3, 3);
-				GMatrix V = new GMatrix(3, 3);
-
-				for (int i = 0; i < 3; i++) {
-					for (int j = 0; j < 3; j++) {
-						U.setElement(i, j, uJama.get(i, j));
-						W.setElement(i, j, wJama.get(i, j));
-						V.setElement(i, j, vJama.get(i, j));
-					}
-				}
-
-				if (run_verbose) {
-					System.out.println("Matrices U, W, V:");
-					System.out.println(U.toString());
-					System.out.println(W.toString());
-					System.out.println(V.toString());
-
-					System.out.println("Reconstructed rMatrix:");
-
-					// W.mulTransposeRight(W, V);
-					// W.mul(W, V);
-					// rMatrix.mul(U, W);
-					// rMatrix.mulTransposeLeft(U, W);
-					System.out.println(rMatrix.toString());
-				}
-
-				if (run_verbose) {
-					System.out.println("  extracting rot and trans");
-				}
-				// rMatrix.mul(U, V);
-				rMatrix.mulTransposeRight(U, V); // mulTransposeRight(Matrix3d m1, Matrix3d m2)
-													// Multiplies matrix m1 times the transpose of matrix m2, and places
-													// the result into this.
-													// also: U*V^T
-				rMatrix.get(rotMatrix); // rMatrix.get(Matrix3d m1) Places the values in the upper 3x3 of this GMatrix
-										// into the matrix m1.
-
-				// rMatrix = GMatrix - die Korrelationsmatrix K
-				// in rotMatrix ist jetzt die neue, aktuelle Rotationsmatrix für diesen einen
-				// Korrekturschritt enthalten
-
-				/*
-				 * Places the values in the upper 3x3 of this GMatrix into the matrix m1.
-				 * 
-				 * @param m1 The matrix that will hold the new values public final void
-				 * get(Matrix3d m1)
-				 */
-
-				// Test rotMatrix, since GMatrix has no determinant...
-				if (rotMatrix.determinant() < 0.0) {
-					/* if (run_verbose) */System.out.println("Negative determinant!");
-					U.setElement(0, 2, -U.getElement(0, 2));
-					U.setElement(1, 2, -U.getElement(1, 2));
-					U.setElement(2, 2, -U.getElement(2, 2));
-					// rMatrix.mul(U, V);
-					rMatrix.mulTransposeRight(U, V);
-					rMatrix.get(rotMatrix);
-				}
-
-				// rotMatrix.transpose(); // das wäre dann die Umkehrfunktion der
-				// Rotationsmatrix R^T = R^-1
-
-				// KH wichtig: wie bei meiner Vorwärtstransformation wird einer der beiden
-				// Centroidvektoren rotiert, bevor die Differenz als Translationsvektor
-				// berechnet wird.
-				rotMatrix.transform(dataCenter);
-				transVector.sub(modelCenter, dataCenter); // werden die bisherigen Inhalte des Translationsvektor hier
-															// wirklich sauber überschrieben?
-															// falls ja, dann wäre jetzt hier die Translation dieses
-															// einen Matching-Schrittes enthalten.
-
-				// Apply motion (preliminary)
-
-				for (int i = 0; i < dataPoints.length; i++) {
-					// Apply Transformation
-					rotMatrix.transform(dataPoints[i], workPoints[i]); // rotMatrix ist 3x3 Matrix
-					/**
-					 * Multiply this matrix by the tuple t and and place the result into the tuple
-					 * "result" (result = this*t).
-					 * 
-					 * @param t
-					 *            the tuple to be multiplied by this matrix
-					 * @param result
-					 *            the tuple into which the product is placed public final void
-					 *            transform(Tuple3d t, Tuple3d result)
-					 * 
-					 *            Hier werden also die NEUEN WorkPoints (alte werden überschreiben)
-					 *            generiert, indem anhand der unveränderten dataPoints mit der
-					 *            neuen, besseren Transformation die workPoints an neuer Stelle für
-					 *            die folgende Berechnung der nearest neighbor Struktur verwendet
-					 *            werden!!
-					 * 
-					 */
-
-					workPoints[i].add(transVector);
-				}
-				if (run_verbose) {
-					System.out.println("Applied new and better transform");
-				}
-				/*
-				 * for (int i=0; i<dataPoints.length;i++){
-				 * System.out.println("DataPoints/WorkPoints: "+dataPoints[i]+" "+workPoints[i])
-				 * ; }
-				 */
-
-				// ************************************************************************
+				//------------------------------------------------------------------------------------------------------
+				//	Calculate Error
+				//------------------------------------------------------------------------------------------------------
 				// KHK: ab hier Abstandsmass berechnet , Fehler der minimiert werden soll
-
-				// c = 0;
-				error = 0.0;
-				for (int i = 0; i < dist_order_count; i++) {
-					int j = dist_order[i]; // = i if unsorted
-					// if (corresp[j] >= 0) {
-					// KHK error metric: error = mean of squared distance
-					error += workPoints[j].distanceSquared(modelPoints[corresp[j]]); // KH: distanceSquared is a method
-																						// of tuple3d from vecmath
-					// c++;
-					// }
-				}
-				if (dist_order_count > 0) {
-					error /= dist_order_count;
-				}
+				error = getError(distanceOrderCount);
 
 				// variance
-				double variance = 0;
+				stdDev = getStdDev(runVerbose, distanceOrderCount, rotationMatrix, translationVector, error);
 
-				for (int i = 0; i < dist_order_count; i++) {
-					int j = dist_order[i]; // = i if unsorted
-					variance += (error - (workPoints[j].distanceSquared(modelPoints[corresp[j]])))
-							* (error - (workPoints[j].distanceSquared(modelPoints[corresp[j]])));
-				}
-				variance = variance / dist_order_count;
-				double stdDev = Math.sqrt(variance);
-
-				// Now the current error is known
-
-				if (run_verbose) {
-					System.out.println("Result of the current iteration:");
-					System.out.println("Rotation Matrix of step:" + steps);
-					System.out.println(rotMatrix.toString());
-					System.out.println("Translation Vector:" + transVector);
-				}
-
-				// KHK Interaktion mit Applet auskommentieren
-				// evtl. als Abfrage:
-				// if (!callFromMatching) ... then belassen, else ignorieren und unten
-				// weiterarbeiten
-
-				// if (run_verbose) System.out.println("Set new transform in scene");
-
+				// KHK Interaktion mit Applet auskommentieren evtl. als Abfrage:
+				// if (!callFromMatching) ... then belassen, else ignorieren und unten weiterarbeiten
+				// if (runVerbose) System.out.println("Set new transform in scene");
 				// check abort conditions
-
 				// error *= visualScale;
 
 				System.out.println();
-				System.out.println("Error: " + error + " with " + dist_order_count + " points");
+				System.out.println("Error: " + error + " with " + distanceOrderCount + " points");
 				System.out.println("stdDef: " + stdDev);
 				System.out.println();
 
 				if (error < ERROR_BOUND) {
 					finished = true;
 				}
-				if (Math.abs(error - last_error) / error < ERROR_DIFF) { // KHK: relative improvement less then
-																			// ERROR_DIFF, at present: < 0.1% change
+				if (Math.abs(error - lastError) / error < ERROR_DIFF) {
+					// KHK: relative improvement less then
+					// ERROR_DIFF, at present: < 0.1% change
 					finished = true;
 				}
-				last_error = error;
-				last_stdDev = stdDev;
+				lastError = error;
+				lastStdDev = stdDev;
 
 			} else { // if (c > 3)
-				// not enough corresponding points
+				//------------------------------------------------------------------------------------------------------
+				//	Not enough corresponding points
+				//------------------------------------------------------------------------------------------------------
 				finished = true;
 			}
-		} // while(!finished)
+		} // while(!finished) // finished, or aborted.
 
-		// Ende der Hauptschleife!!
-
-		// finished, or aborted.
+		//--------------------------------------------------------------------------------------------------------------
+		//	Return Transformation Matrix
+		//--------------------------------------------------------------------------------------------------------------
 
 		System.out.println();
 		System.out.println("*******************************");
@@ -710,52 +294,557 @@ class ICPAlgorithm2014 {
 		System.out.println("*******************************");
 		System.out.println("*******************************");
 
+		return buildTransformationMatrix(rotationMatrix, translationVector);
+
+	} // KHK: Ende der Run Methode
+
+
+	/*##################################################################################################################
+	*
+	* 										MAIN CALCULATIONS
+	*
+	##################################################################################################################*/
+
+
+	private double[][] buildTransformationMatrix(Matrix3d rotationMatrix, Vector3d translationVector) {
 		double[][] transformationMatrix = new double[4][4];
 
-		transformationMatrix[0][0] = rotMatrix.getElement(0, 0);
-		transformationMatrix[1][0] = rotMatrix.getElement(1, 0);
-		transformationMatrix[2][0] = rotMatrix.getElement(2, 0);
+		transformationMatrix[0][0] = rotationMatrix.getElement(0, 0);
+		transformationMatrix[1][0] = rotationMatrix.getElement(1, 0);
+		transformationMatrix[2][0] = rotationMatrix.getElement(2, 0);
 		transformationMatrix[3][0] = 0.0;
 
-		transformationMatrix[0][1] = rotMatrix.getElement(0, 1);
-		transformationMatrix[1][1] = rotMatrix.getElement(1, 1);
-		transformationMatrix[2][1] = rotMatrix.getElement(2, 1);
+		transformationMatrix[0][1] = rotationMatrix.getElement(0, 1);
+		transformationMatrix[1][1] = rotationMatrix.getElement(1, 1);
+		transformationMatrix[2][1] = rotationMatrix.getElement(2, 1);
 		transformationMatrix[3][1] = 0.0;
 
-		transformationMatrix[0][2] = rotMatrix.getElement(0, 2);
-		transformationMatrix[1][2] = rotMatrix.getElement(1, 2);
-		transformationMatrix[2][2] = rotMatrix.getElement(2, 2);
+		transformationMatrix[0][2] = rotationMatrix.getElement(0, 2);
+		transformationMatrix[1][2] = rotationMatrix.getElement(1, 2);
+		transformationMatrix[2][2] = rotationMatrix.getElement(2, 2);
 		transformationMatrix[3][2] = 0.0;
 
-		transformationMatrix[0][3] = transVector.x;
-		transformationMatrix[1][3] = transVector.y;
-		transformationMatrix[2][3] = transVector.z;
+		transformationMatrix[0][3] = translationVector.x;
+		transformationMatrix[1][3] = translationVector.y;
+		transformationMatrix[2][3] = translationVector.z;
 		transformationMatrix[3][3] = 1.0;
 
-		// if (run_verbose){
-		if (true) {
-			System.out.println("Transformation Matrix formated for TransformJ: ");
-			System.out.println(transformationMatrix[0][0] + "\t" + transformationMatrix[0][1] + "\t"
-					+ transformationMatrix[0][2] + "\t" + transformationMatrix[0][3]);
-			System.out.println(transformationMatrix[1][0] + "\t" + transformationMatrix[1][1] + "\t"
-					+ transformationMatrix[1][2] + "\t" + transformationMatrix[1][3]);
-			System.out.println(transformationMatrix[2][0] + "\t" + transformationMatrix[2][1] + "\t"
-					+ transformationMatrix[2][2] + "\t" + transformationMatrix[2][3]);
-			System.out.println(transformationMatrix[3][0] + "\t" + transformationMatrix[3][1] + "\t"
-					+ transformationMatrix[3][2] + "\t" + transformationMatrix[3][3]);
-		}
+		// if (runVerbose){
+		System.out.println("Transformation Matrix formated for TransformJ: ");
+		System.out.println(transformationMatrix[0][0] + "\t" + transformationMatrix[0][1] + "\t"
+				+ transformationMatrix[0][2] + "\t" + transformationMatrix[0][3]);
+		System.out.println(transformationMatrix[1][0] + "\t" + transformationMatrix[1][1] + "\t"
+				+ transformationMatrix[1][2] + "\t" + transformationMatrix[1][3]);
+		System.out.println(transformationMatrix[2][0] + "\t" + transformationMatrix[2][1] + "\t"
+				+ transformationMatrix[2][2] + "\t" + transformationMatrix[2][3]);
+		System.out.println(transformationMatrix[3][0] + "\t" + transformationMatrix[3][1] + "\t"
+				+ transformationMatrix[3][2] + "\t" + transformationMatrix[3][3]);
+//		}
 
 		return transformationMatrix;
+	}
 
-	} // run()
-	// KHK: Ende der Run Methode
+	private double getStdDev(boolean runVerbose, int distanceOrderCount, Matrix3d rotationMatrix, Vector3d translationVector, double error) {
+		double variance = 0;
+		for (int i = 0; i < distanceOrderCount; i++) {
+			int j = distanceOrder[i]; // = i if unsorted
+			variance += (error - (baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]])))
+					* (error - (baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]])));
+		}
+		variance = variance / distanceOrderCount;
+		double stdDev = Math.sqrt(variance);
 
-	private double sort_dist(int i) {
-		int j = dist_order[i];
-		if (corresp[j] < 0) {
+		// Now the current error is known
+
+		if (runVerbose) {
+			System.out.println("Result of the current iteration:");
+			System.out.println("Rotation Matrix of step:" + steps);
+			System.out.println(rotationMatrix.toString());
+			System.out.println("Translation Vector:" + translationVector);
+		}
+		return stdDev;
+	}
+
+	private double getError(int distanceOrderCount) {
+		double error;// c = 0;
+		error = 0.0;
+		for (int i = 0; i < distanceOrderCount; i++) {
+			int j = distanceOrder[i]; // = i if unsorted
+			// if (corresp[j] >= 0) {
+			// KHK error metric: error = mean of squared distance
+			error += baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]]);
+			// KH: distanceSquared is a method
+			// of tuple3d from vecmath
+
+			// c++;
+			// }
+		}
+		if (distanceOrderCount > 0) {
+			error /= distanceOrderCount;
+		}
+		return error;
+	}
+
+	private void applySVDTransformation(boolean runVerbose, Matrix3d rotationMatrix, Vector3d translationVector) {
+		for (int i = 0; i < baseDataPoints.length; i++) {
+			// Apply Transformation
+			rotationMatrix.transform(baseDataPoints[i], baseWorkPoints[i]);
+			// rotationMatrix ist 3x3 Matrix
+			/**
+			 * Multiply this matrix by the tuple t and and place the result into the tuple
+			 * "result" (result = this*t).
+			 *
+			 * @param t
+			 *            the tuple to be multiplied by this matrix
+			 * @param result
+			 *            the tuple into which the product is placed public final void
+			 *            transform(Tuple3d t, Tuple3d result)
+			 *
+			 *            Hier werden also die NEUEN WorkPoints (alte werden überschreiben)
+			 *            generiert, indem anhand der unveränderten dataPoints mit der
+			 *            neuen, besseren Transformation die workPoints an neuer Stelle für
+			 *            die folgende Berechnung der nearest neighbor Struktur verwendet
+			 *            werden!!
+			 *
+			 */
+
+			baseWorkPoints[i].add(translationVector);
+		}
+		if (runVerbose) {
+			System.out.println("Applied new and better transform");
+		}
+		/*
+		 * for (int i=0; i<dataPoints.length;i++){
+		 * System.out.println("DataPoints/WorkPoints: "+dataPoints[i]+" "+workPoints[i])
+		 * ; }
+		 */
+	}
+
+	private void calcSingularValueComposition(boolean runVerbose, Matrix3d rotationMatrix, Vector3d translationVector,
+											  Point3d baseDataCenter, Point3d targetModelCenter, GMatrix rotMatrix,
+											  double[][] rotationArray)
+	{
+		// use Jama, not javax.vecmath (buggy)
+
+		rotMatrix.getRow(0, rotationArray[0]);
+		// getRow(int row, double[] array) Places the values of the specified row
+		// into the array parameter.
+
+		rotMatrix.getRow(1, rotationArray[1]);
+		rotMatrix.getRow(2, rotationArray[2]);
+
+		Matrix rJamaMatrix = new Matrix(rotationArray, 3, 3);
+
+		Matrix uJama;
+		Matrix wJama;
+		Matrix vJama;
+		if (runVerbose) {
+			System.out.println("  computing SUV");
+		}
+		SingularValueDecomposition svdJama = new SingularValueDecomposition(rJamaMatrix);
+		uJama = svdJama.getU();
+		wJama = svdJama.getS(); // diagonal matrix
+		vJama = svdJama.getV();
+
+		GMatrix U = new GMatrix(3, 3);
+		GMatrix W = new GMatrix(3, 3);
+		GMatrix V = new GMatrix(3, 3);
+
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 3; j++) {
+				U.setElement(i, j, uJama.get(i, j));
+				W.setElement(i, j, wJama.get(i, j));
+				V.setElement(i, j, vJama.get(i, j));
+			}
+		}
+
+		if (runVerbose) {
+			System.out.println("Matrices U, W, V:");
+			System.out.println(U.toString());
+			System.out.println(W.toString());
+			System.out.println(V.toString());
+
+			System.out.println("Reconstructed rotMatrix:");
+
+			// W.mulTransposeRight(W, V);
+			// W.mul(W, V);
+			// rotMatrix.mul(U, W);
+			// rotMatrix.mulTransposeLeft(U, W);
+			System.out.println(rotMatrix.toString());
+		}
+
+		if (runVerbose) {
+			System.out.println("  extracting rot and trans");
+		}
+		// rotMatrix.mul(U, V);
+		rotMatrix.mulTransposeRight(U, V);
+		// mulTransposeRight(Matrix3d m1, Matrix3d m2)
+		// Multiplies matrix m1 times the transpose of matrix m2, and places the result into this.
+		// also: U*V^T
+
+		rotMatrix.get(rotationMatrix);
+		// rotMatrix.get(Matrix3d m1) Places the values in the upper 3x3 of this GMatrix into the matrix m1.
+
+		// rotMatrix = GMatrix - die Korrelationsmatrix K
+		// in rotationMatrix ist jetzt die neue, aktuelle Rotationsmatrix für diesen einen Korrekturschritt enthalten
+
+		/*
+		 * Places the values in the upper 3x3 of this GMatrix into the matrix m1.
+		 *
+		 * @param m1 The matrix that will hold the new values public final void
+		 * get(Matrix3d m1)
+		 */
+
+		// Test rotationMatrix, since GMatrix has no determinant...
+		if (rotationMatrix.determinant() < 0.0) {
+			/* if (runVerbose) */System.out.println("Negative determinant!");
+			U.setElement(0, 2, -U.getElement(0, 2));
+			U.setElement(1, 2, -U.getElement(1, 2));
+			U.setElement(2, 2, -U.getElement(2, 2));
+			// rotMatrix.mul(U, V);
+			rotMatrix.mulTransposeRight(U, V);
+			rotMatrix.get(rotationMatrix);
+		}
+
+		// rotationMatrix.transpose(); // das wäre dann die Umkehrfunktion der Rotationsmatrix R^T = R^-1
+
+		// KH wichtig: wie bei meiner Vorwärtstransformation wird einer der beiden Centroidvektoren rotiert, bevor die
+		// Differenz als Translationsvektor berechnet wird.
+		rotationMatrix.transform(baseDataCenter);
+		translationVector.sub(targetModelCenter, baseDataCenter);
+		// werden die bisherigen Inhalte des Translationsvektor hier wirklich sauber überschrieben?
+		// falls ja, dann wäre jetzt hier die Translation dieses einen Matching-Schrittes enthalten.
+	}
+
+	private void calculateCentroids(boolean runVerbose, int distanceOrderCount, Point3d baseDataCenter,
+									Point3d targetModelCenter, GMatrix rotMatrix, GMatrix addMatrix)
+	{
+		// *************************** KHK explanation
+
+		/*
+		 * this method implements formula (3) of Kanatani/Horn and others the weight is
+		 * set to "1". It is a scaling factor only. KHK exactly the same method is
+		 * implemented for the corresponding landmark registration Formula (3):
+		 *
+		 * K = SUM(vectorPoint1 * vectorPoint'1^T) --> ^T means transposed
+		 *
+		 * in detail:
+		 *
+		 * Each point consists of 3 coordinates x, y, z Each point is treated as a
+		 * vector. The coordinates of these vectors are arranged vertically ( x1 )
+		 * Point1 = ( y1 ) ( z1 )
+		 *
+		 * Point1'^T = (x'1, y'1, z'1)
+		 *
+		 * The mark "'" means the corresponding point in the second image
+		 *
+		 * The multiplication of the two 3x1 vectors results in a 3x3 matrix =
+		 * correlationMatrixK. The matrices off all points are summarized and result in K
+		 *
+		 */
+		// *************************** KHK explanation
+
+		// - estimate rotation and translation
+		baseDataCenter.set(0.0, 0.0, 0.0);
+		targetModelCenter.set(0.0, 0.0, 0.0);
+
+		rotMatrix.setZero(); // GMatrix
+		addMatrix.setZero(); // GMatrix
+
+		// Berechnung des Centroids indem alle Punkte summiert werden und durch die Zahl der Punkte dividiert wird
+		// jede einzelne Achse (x,y,z) wird separat addiert und dividiert (-> Division = .scale)
+
+		for (int i = 0; i < distanceOrderCount; i++) {
+			int j = distanceOrder[i]; // = i if unsorted
+			// if (corresp[i] >= 0) {
+			baseDataCenter.add(baseDataPoints[j]);
+			targetModelCenter.add(targetModelPoints[correspondingPoints[j]]);
+			// c++;
+			// }
+		}
+
+		if (distanceOrderCount > 0) {
+			// scale = hier Division durch Zahl der addierten Punkte
+			// d.h. wir haben den Mittelwert aller Punkte = Centroid!
+			baseDataCenter.scale(1.0 / ((double) distanceOrderCount));
+			targetModelCenter.scale(1.0 / ((double) distanceOrderCount));
+		}
+
+		if (runVerbose)	System.out.println("Centers:");
+		if (runVerbose)	System.out.println("  " + targetModelCenter);
+		if (runVerbose)	System.out.println("  " + baseDataCenter);
+
+		GVector dataCenterVector = new GVector(baseDataCenter);
+		// * Constructs a new GVector (javax.vecmath) and copies
+		// the initial values
+		// * from the specified tuple - in this case a Point3d.
+		// * Point 3d = java.lang.Object
+		// +--javax.vecmath.Tuple3d +--javax.vecmath.Point3d
+
+		GVector modelCenterVector = new GVector(targetModelCenter);
+		GVector baseDataPoint = new GVector(3);
+		GVector targetModelPoint = new GVector(3);
+		for (int i = 0; i < distanceOrderCount; i++) {
+			int j = distanceOrder[i]; // = i if unsorted
+			// if (corresp[j] >= 0) {
+			baseDataPoint.set(baseDataPoints[j]);
+			targetModelPoint.set(targetModelPoints[correspondingPoints[j]]);
+			// ACHTUNG diese Zeile ist enorm wichtig!!!!
+			// hier wird bei jedem Durchgang eine bessere Zuordnung für die
+			// Punktelisten verwendet. Dadurch wird die Rotation und
+			// Translation
+			// auch immer bessere Ergebnisse erzielen.
+			// Es ist aber immer nur eine Rotation/Translation... es wird
+			// hier nichts akkumuliert!!
+
+			baseDataPoint.sub(dataCenterVector);
+			// Punkte Liste - von den einzelnen Punkten wird der Centroid abgezogen
+			// * Sets the value of this vector to the vector difference of itself
+			// * and vector (this = this - vector).
+
+			targetModelPoint.sub(modelCenterVector);
+			addMatrix.mul(targetModelPoint, baseDataPoint);
+			// addMatrix ist als GMatrix 3x3 definiert
+			// addMatrix entspricht Kanatani's im Prinzip: vectorPoint1 *
+			// vectorPoint'1^T
+			// targetModelPoint = row vector, baseDataPoint = column vector
+			// Vektormultiplikation, targetModelPoint, baseDataPoint sind Vektoren
+
+			/*
+			 * Computes the outer product of the two vectors; multiplies the the first
+			 * vector by the transpose of the second vector and places the matrix result
+			 * into this matrix. This matrix must be be as big or bigger than
+			 * getSize(v1)xgetSize(v2).
+			 */
+
+			/**
+			 * Sets the value of this matrix to sum of itself and matrix m1.
+			 *
+			 * @param m1
+			 *            the other matrix (rotMatrix wird bei ca. Z 386 mit Null
+			 *            initialisiert
+			 *
+			 *            rotMatrix entspricht: K = SUM(vectorPoint1 * vectorPoint'1^T)
+			 *            in der
+			 *            Kanatani Nomenklatur
+			 */
+			rotMatrix.add(addMatrix);
+
+		}
+
+		if (runVerbose) {
+			System.out.println(
+					"Finished to calculate the correlation matrix K: Accumulated centers and rotation Matrix"
+			);
+		}
+	}
+
+	private int refineCorrespondingPoints(int distanceOrderCount, double lastError, double lastStdDev) {
+		// KHK todo: clip_gradient implementieren
+
+		int distOrderWrite;// REFINE HERE
+
+		if (refineSparse) {
+
+			// kill a certain percentage of points.
+			// This works WITHOUT sorting!
+			double sparseAccum = 0.0;
+			distOrderWrite = 0;
+			for (int i = 0; i < distanceOrderCount; i++) {
+				sparseAccum += refineSparseParameter;
+				if (sparseAccum < 1.0) {
+					// write back work point index into list
+					distanceOrder[distOrderWrite++] = distanceOrder[i];
+				} else {
+					sparseAccum -= 1.0;
+				}
+			}
+
+			distanceOrderCount = distOrderWrite; // update
+
+		}
+
+		// bring in sorted order
+		// KHK das war der Originalaufruf: sort(0, distanceOrderCount-1);
+		sortKH(0, distanceOrderCount - 1); // Aufruf meiner Variante
+
+		// sort(0, 5);
+
+		// Code for printing all distances, used with no starting
+		// transformation
+		// for (int i=0; i<dist_order.length; i++) {
+		// System.out.println(sort_dist(i));
+		// }
+		// System.exit(0);
+
+		if (refineClip) {
+			// kill percentage of points with highest distance
+			// The two faces have about 75% overlap
+			// (approximated value from non-transformed distance values)
+			distanceOrderCount = (int) ((double) distanceOrderCount * refineClipParameter);
+			// no need to flush, since we won't be touching them
+			// ever again!
+			// for (int i=(int)(distanceOrderCount); i<dist_order.length; i++) {
+			// corresp[dist_order[i]] = -1; // no corresp point for you!
+			// }
+		}
+
+		if (refineClamp) {
+
+			// kill all points farther away than a multiple (= refine_clamp_par) of
+			// the last reported mean distance and a multiple (= refine_clamp_par) of
+			// the current median distance
+
+			double medianDistance = refineClampParameter * sortedDistances(distanceOrderCount / 2);
+			double lastDistance = refineClampParameter * lastError;
+			distOrderWrite = 0;
+			for (int i = 0; i < distanceOrderCount; i++) {
+				double di = sortedDistances(i);
+				if ((di <= lastDistance) && (di <= medianDistance)) {
+					// write back work point index into list
+					distanceOrder[distOrderWrite++] = distanceOrder[i];
+				}
+			}
+			System.out.println("refineClamp");
+			System.out.println("lastStdDev: " + lastStdDev + "\n" + "lastError: " + lastError + "\n"
+					+ "workPoints.length: " + baseWorkPoints.length + "\n" + "distanceOrderCount: "
+					+ distanceOrderCount + "\n" + "distOrderWrite: " + distOrderWrite);
+			distanceOrderCount = distOrderWrite; // update
+
+		}
+
+		if (refineSd) {
+			// sd = standardDeviation
+			// kill all points farther away than a multiple of the standard deviation from
+			// the current mean distance
+			double distance = refineSdParameter * lastStdDev;
+			distOrderWrite = 0;
+			for (int i = 0; i < distanceOrderCount; i++) {
+				double di = sortedDistances(i);
+				if (di <= distance) {
+					// write back work point index into list
+					distanceOrder[distOrderWrite++] = distanceOrder[i];
+				}
+			}
+			System.out.println("refineSd");
+			System.out.println("lastStdDev: " + lastStdDev + "\n" + "lastError: " + lastError + "\n"
+					+ "workPoints.length: " + baseWorkPoints.length + "\n" + "distanceOrderCount: "
+					+ distanceOrderCount + "\n" + "distOrderWrite: " + distOrderWrite);
+			System.out.println();
+			distanceOrderCount = distOrderWrite; // update
+
+		}
+
+		if (refineUnique) {
+			// allow only the closest work point per model point
+			// EXTREMELY SLOW!
+
+			distOrderWrite = 0;
+			for (int i = 0; i < distanceOrderCount; i++) {
+				int m = correspondingPoints[distanceOrder[i]]; // model point in question
+				if (modelUnique[m] == 0) {
+					modelUnique[m] = 1;
+					distanceOrder[distOrderWrite++] = distanceOrder[i];
+				}
+				// if (m != -1) {
+				// for (int j=i+1; j<distanceOrderCount; j++) {
+				// if (corresp[dist_order[j]] == m) {
+				// corresp[dist_order[j]] = -1;
+				// }
+				// }
+				// }
+			}
+
+			distanceOrderCount = distOrderWrite;
+		}
+		return distanceOrderCount;
+	}
+
+	private void findNearestNeighbor(boolean runVerbose) {
+		Point3d baseWorkPoint;
+		double x0;
+		double x1;
+		double y0;
+		double y1;
+		double z0;
+		double z1;// - find corresponding pairs into int list
+
+		for (int i = 0; i < baseWorkPoints.length; i++) {
+			baseWorkPoint = baseWorkPoints[i];
+			// KHK den Teil mit x0, x1 verstehe ich nicht.
+			// So wie ich das verstehe, müssen alle Werte gleich Null werden und werden sie
+			// auch.
+			// Soll das sicherstellen, dass es keine Werte außerhalb der Bounding-Box gibt?
+
+			// x0..z1 are the distances OUTSIDE the bounding box
+			x0 = modelCorner0.x - baseWorkPoint.x;
+			if (x0 < 0.0) {
+				x0 = 0.0;
+			}
+			x1 = baseWorkPoint.x - modelCorner1.x;
+			if (x1 < 0.0) {
+				x1 = 0.0;
+			}
+			y0 = modelCorner0.y - baseWorkPoint.y;
+			if (y0 < 0.0) {
+				y0 = 0.0;
+			}
+			y1 = baseWorkPoint.y - modelCorner1.y;
+			if (y1 < 0.0) {
+				y1 = 0.0;
+			}
+			z0 = modelCorner0.z - baseWorkPoint.z;
+			if (z0 < 0.0) {
+				z0 = 0.0;
+			}
+			z1 = baseWorkPoint.z - modelCorner1.z;
+			if (z1 < 0.0) {
+				z1 = 0.0;
+			}
+
+			correspondingPoints[i] = modelTree.findNearest(
+					baseWorkPoint,
+					Double.POSITIVE_INFINITY,
+					(x0 * x0) + (x1 * x1),
+					(y0 * y0) + (y1 * y1),
+					(z0 * z0) + (z1 * z1)
+			);
+
+		}
+
+		if (runVerbose) System.out.println("Computed nearest points");
+	}
+
+	private void transformBaseWorkPoints(Matrix3d rotationMatrix, Vector3d translationVector, Point3d[] baseWorkPoints,
+										 boolean runVerbose)
+	{
+		// ******************************************
+		// - apply transform to data points, creating new set
+		// *******************************************
+		for (int i = 0; i < baseDataPoints.length; i++) {
+			baseWorkPoints[i] = new Point3d(baseDataPoints[i]);
+			// hier: erst Rotation, dann Translation...
+			rotationMatrix.transform(baseWorkPoints[i]);
+			baseWorkPoints[i].add(translationVector);
+			// System.out.println("DataPoints und Workpoints:"+dataPoints[i]+"
+			// "+workPoints[i]);
+		}
+
+		if (runVerbose)	System.out.println("Finished initial transform");
+	}
+
+	/*##################################################################################################################
+	*
+	* 										Helper sorting functions
+	*
+	##################################################################################################################*/
+
+	private double sortedDistances(int i) {
+		int j = distanceOrder[i];
+		if (correspondingPoints[j] < 0) {
 			return Double.POSITIVE_INFINITY;
 		}
-		return workPoints[j].distanceSquared(modelPoints[corresp[j]]);
+		return baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]]);
 	}
 
 	// Sort an int-array according to workPoint - modelPoint distance
@@ -775,17 +864,17 @@ class ICPAlgorithm2014 {
 		if (right <= left)
 			return;
 		int lt = left, gt = right;
-		int temp1 = dist_order[left];
+		int temp1 = distanceOrder[left];
 		int i = left;
 		int cmp;
 		while (i <= gt) {
 
-			cmp = compareTo_KH(dist_order[i], temp1);
+			cmp = compareToKH(distanceOrder[i], temp1);
 
 			if (cmp < 0)
-				exch(dist_order, lt++, i++);
+				exch(distanceOrder, lt++, i++);
 			else if (cmp > 0)
-				exch(dist_order, i, gt--);
+				exch(distanceOrder, i, gt--);
 			else
 				i++;
 		}
@@ -794,19 +883,16 @@ class ICPAlgorithm2014 {
 		sortKH(left, lt - 1);
 		sortKH(gt + 1, right);
 
-		assert isSorted(dist_order, left, right);
+		assert isSorted(distanceOrder, left, right);
 
 	}
 
-	/***********************************************************************
-	 * Helper sorting functions
-	 ***********************************************************************/
 	// compareTo_KH(Point3d v, Point3d w)
 	// replaces:
 	// ---> dist_order[i].compareTo(temp)
 	// ---> v.compareTo(w)
 
-	private int compareTo_KH(int v, int w) {
+	private int compareToKH(int v, int w) {
 		int result;
 		if (v < w) {
 			result = -1;
@@ -820,24 +906,29 @@ class ICPAlgorithm2014 {
 		}
 	}
 
-	// exchange dist_order[i] and dist_order[j]
-	private void exch(int[] dist_order, int i, int j) {
-		int swap = dist_order[i];
-		dist_order[i] = dist_order[j];
-		dist_order[j] = swap;
+	// exchange distOrder[i] and distOrder[j]
+	private void exch(int[] distOrder, int i, int j) {
+		int swap = distOrder[i];
+		distOrder[i] = distOrder[j];
+		distOrder[j] = swap;
 	}
 
-	/***********************************************************************
-	 * Check if array is sorted - useful for debugging
-	 ***********************************************************************/
-
-	private boolean isSorted(int[] dist_order, int left, int right) {
+	//**********************************************************************
+	// Check if array is sorted - useful for debugging
+	//**********************************************************************
+	private boolean isSorted(int[] distOrder, int left, int right) {
 		for (int i = left + 1; i <= right; i++) {
-			if (dist_order[i] < dist_order[i - 1])
+			if (distOrder[i] < distOrder[i - 1])
 				return false;
 		}
 		return true;
 	}
+
+	/*##################################################################################################################
+	*
+	* 											NOT USED
+	*
+	##################################################################################################################*/
 
 	// KHK todo als eigenes Objekt mit Rückgabe von stdDev und mean ... anlegen a la
 	// ParameterICP
@@ -845,8 +936,8 @@ class ICPAlgorithm2014 {
 	private double getStdDevSquaredEuklid(int dist_order_count, Point3d[] workPoints, Point3d[] modelPoints,
 			int[] corresp, Matrix3d rotMatrix, Vector3d transVector) {
 
-		for (int i = 0; i < dataPoints.length; i++) {
-			workPoints[i] = new Point3d(dataPoints[i]);
+		for (int i = 0; i < baseDataPoints.length; i++) {
+			workPoints[i] = new Point3d(baseDataPoints[i]);
 			// hier: erst Rotation, dann Translation...
 			rotMatrix.transform(workPoints[i]);
 			workPoints[i].add(transVector);
@@ -856,7 +947,7 @@ class ICPAlgorithm2014 {
 
 		double error = 0.0;
 		for (int i = 0; i < dist_order_count; i++) {
-			int j = dist_order[i]; // = i if unsorted
+			int j = distanceOrder[i]; // = i if unsorted
 			// if (corresp[j] >= 0) {
 			// KHK error metric: error = mean of squared distance
 			error += workPoints[j].distanceSquared(modelPoints[corresp[j]]); // KH: distanceSquared is a method of
@@ -872,7 +963,7 @@ class ICPAlgorithm2014 {
 		double variance = 0;
 
 		for (int i = 0; i < dist_order_count; i++) {
-			int j = dist_order[i]; // = i if unsorted
+			int j = distanceOrder[i]; // = i if unsorted
 			variance += (error - (workPoints[j].distanceSquared(modelPoints[corresp[j]])))
 					* (error - (workPoints[j].distanceSquared(modelPoints[corresp[j]])));
 		}
@@ -885,8 +976,8 @@ class ICPAlgorithm2014 {
 	private double getMeanSquaredEuklid(int dist_order_count, Point3d[] workPoints, Point3d[] modelPoints,
 			int[] corresp, Matrix3d rotMatrix, Vector3d transVector) {
 
-		for (int i = 0; i < dataPoints.length; i++) {
-			workPoints[i] = new Point3d(dataPoints[i]);
+		for (int i = 0; i < baseDataPoints.length; i++) {
+			workPoints[i] = new Point3d(baseDataPoints[i]);
 			// hier: erst Rotation, dann Translation...
 			rotMatrix.transform(workPoints[i]);
 			workPoints[i].add(transVector);
@@ -896,7 +987,7 @@ class ICPAlgorithm2014 {
 
 		double error = 0.0;
 		for (int i = 0; i < dist_order_count; i++) {
-			int j = dist_order[i]; // = i if unsorted
+			int j = distanceOrder[i]; // = i if unsorted
 			// if (corresp[j] >= 0) {
 			// KHK error metric: error = mean of squared distance
 			error += workPoints[j].distanceSquared(modelPoints[corresp[j]]); // KH: distanceSquared is a method of
