@@ -10,7 +10,7 @@ import vecmath.*;
 // hier wurde die rechenzeitintensive Berechnung der nächsten Nachbarn durch einen Suchbaum optimiert
 // siehe z. B. file:///KHKsData/usr2/Recherchen/3d-matching-und-microCT-news/ICP-Erlangen-Java/Kd-tree.htm 
 // Quelle: http://www9.informatik.uni-erlangen.de:81/sfb603/Saeulen/Optimierung/Allgemein/applet2 - Zugriff 2008 
-//         (2014 nicht mehr zugängig)
+// (2014 nicht mehr zugängig)
 
 class ICPAlgorithm2014 {
 
@@ -129,9 +129,11 @@ class ICPAlgorithm2014 {
 		// KHK for debugging:
 		// rotationMatrix.setIdentity();
 
-		if (runVerbose)	System.out.println("Rotation Matrix:" + rotationMatrix);
-		if (runVerbose)	System.out.println(rotationMatrix.toString());
-		if (runVerbose)	System.out.println("Translation Vector:" + translationVector);
+		if (runVerbose)	{
+			System.out.println("Rotation Matrix:" + rotationMatrix);
+			System.out.println(rotationMatrix.toString());
+			System.out.println("Translation Vector:" + translationVector);
+		}
 
 		baseWorkPoints = new Point3d[baseDataPoints.length];
 		correspondingPoints = new int[baseWorkPoints.length];
@@ -344,7 +346,8 @@ class ICPAlgorithm2014 {
 		return transformationMatrix;
 	}
 
-	private double getStdDev(boolean runVerbose, int distanceOrderCount, Matrix3d rotationMatrix, Vector3d translationVector, double error) {
+	private double getStdDev(boolean runVerbose, int distanceOrderCount, Matrix3d rotationMatrix,
+							 Vector3d translationVector, double error) {
 		double variance = 0;
 		for (int i = 0; i < distanceOrderCount; i++) {
 			int j = distanceOrder[i]; // = i if unsorted
@@ -485,14 +488,13 @@ class ICPAlgorithm2014 {
 		rotMatrix.get(rotationMatrix);
 		// rotMatrix.get(Matrix3d m1) Places the values in the upper 3x3 of this GMatrix into the matrix m1.
 
-		// rotMatrix = GMatrix - die Korrelationsmatrix K
-		// in rotationMatrix ist jetzt die neue, aktuelle Rotationsmatrix für diesen einen Korrekturschritt enthalten
+		// rotMatrix = GMatrix - die Korrelationsmatrix K in rotationMatrix ist jetzt die neue, aktuelle Rotationsmatrix
+		// für diesen einen Korrekturschritt enthalten
 
 		/*
 		 * Places the values in the upper 3x3 of this GMatrix into the matrix m1.
 		 *
-		 * @param m1 The matrix that will hold the new values public final void
-		 * get(Matrix3d m1)
+		 * @param m1 The matrix that will hold the new values public final void get(Matrix3d m1)
 		 */
 
 		// Test rotationMatrix, since GMatrix has no determinant...
@@ -522,24 +524,23 @@ class ICPAlgorithm2014 {
 		// *************************** KHK explanation
 
 		/*
-		 * this method implements formula (3) of Kanatani/Horn and others the weight is
-		 * set to "1". It is a scaling factor only. KHK exactly the same method is
-		 * implemented for the corresponding landmark registration Formula (3):
+		 * this method implements formula (3) of Kanatani/Horn and others the weight is set to "1". It is a scaling
+		 * factor only. KHK exactly the same method is implemented for the corresponding landmark registration
+		 * Formula (3):
 		 *
 		 * K = SUM(vectorPoint1 * vectorPoint'1^T) --> ^T means transposed
 		 *
 		 * in detail:
 		 *
-		 * Each point consists of 3 coordinates x, y, z Each point is treated as a
-		 * vector. The coordinates of these vectors are arranged vertically ( x1 )
-		 * Point1 = ( y1 ) ( z1 )
+		 * Each point consists of 3 coordinates x, y, z Each point is treated as a vector. The coordinates of these
+		 * vectors are arranged vertically: Point1 = ( x1 ) ( y1 ) ( z1 )
 		 *
 		 * Point1'^T = (x'1, y'1, z'1)
 		 *
 		 * The mark "'" means the corresponding point in the second image
 		 *
-		 * The multiplication of the two 3x1 vectors results in a 3x3 matrix =
-		 * correlationMatrixK. The matrices off all points are summarized and result in K
+		 * The multiplication of the two 3x1 vectors results in a 3x3 matrix = correlationMatrixK.
+		 * The matrices off all points are summarized and result in K
 		 *
 		 */
 		// *************************** KHK explanation
@@ -564,69 +565,61 @@ class ICPAlgorithm2014 {
 		}
 
 		if (distanceOrderCount > 0) {
-			// scale = hier Division durch Zahl der addierten Punkte
-			// d.h. wir haben den Mittelwert aller Punkte = Centroid!
+			// hier Division durch Zahl der addierten Punkte d.h. wir haben den Mittelwert aller Punkte = Centroid!
 			baseDataCenter.scale(1.0 / ((double) distanceOrderCount));
 			targetModelCenter.scale(1.0 / ((double) distanceOrderCount));
 		}
 
-		if (runVerbose)	System.out.println("Centers:");
-		if (runVerbose)	System.out.println("  " + targetModelCenter);
-		if (runVerbose)	System.out.println("  " + baseDataCenter);
+		if (runVerbose)	{
+			System.out.println("Centers:");
+			System.out.println("  " + targetModelCenter);
+			System.out.println("  " + baseDataCenter);
+		}
 
 		GVector dataCenterVector = new GVector(baseDataCenter);
-		// * Constructs a new GVector (javax.vecmath) and copies
-		// the initial values
-		// * from the specified tuple - in this case a Point3d.
+		GVector modelCenterVector = new GVector(targetModelCenter);
+		// * Constructs a new GVector (javax.vecmath) and copies the initial values from the specified tuple
+		// - in this case a Point3d.
 		// * Point 3d = java.lang.Object
 		// +--javax.vecmath.Tuple3d +--javax.vecmath.Point3d
 
-		GVector modelCenterVector = new GVector(targetModelCenter);
 		GVector baseDataPoint = new GVector(3);
 		GVector targetModelPoint = new GVector(3);
+
 		for (int i = 0; i < distanceOrderCount; i++) {
 			int j = distanceOrder[i]; // = i if unsorted
 			// if (corresp[j] >= 0) {
 			baseDataPoint.set(baseDataPoints[j]);
 			targetModelPoint.set(targetModelPoints[correspondingPoints[j]]);
 			// ACHTUNG diese Zeile ist enorm wichtig!!!!
-			// hier wird bei jedem Durchgang eine bessere Zuordnung für die
-			// Punktelisten verwendet. Dadurch wird die Rotation und
-			// Translation
-			// auch immer bessere Ergebnisse erzielen.
-			// Es ist aber immer nur eine Rotation/Translation... es wird
-			// hier nichts akkumuliert!!
+			// hier wird bei jedem Durchgang eine bessere Zuordnung für die Punktelisten verwendet. Dadurch wird die
+			// Rotation und Translation auch immer bessere Ergebnisse erzielen. Es ist aber immer nur eine Rotation/
+			// Translation... es wird hier nichts akkumuliert!!
 
 			baseDataPoint.sub(dataCenterVector);
-			// Punkte Liste - von den einzelnen Punkten wird der Centroid abgezogen
-			// * Sets the value of this vector to the vector difference of itself
-			// * and vector (this = this - vector).
-
 			targetModelPoint.sub(modelCenterVector);
+			// Punkte Liste - von den einzelnen Punkten wird der Centroid abgezogen
+			// Sets the value of this vector to the vector difference of itself and vector (this = this - vector).
+
 			addMatrix.mul(targetModelPoint, baseDataPoint);
 			// addMatrix ist als GMatrix 3x3 definiert
-			// addMatrix entspricht Kanatani's im Prinzip: vectorPoint1 *
-			// vectorPoint'1^T
+			// addMatrix entspricht Kanatani's im Prinzip: vectorPoint1 * vectorPoint'1^T
 			// targetModelPoint = row vector, baseDataPoint = column vector
 			// Vektormultiplikation, targetModelPoint, baseDataPoint sind Vektoren
 
 			/*
-			 * Computes the outer product of the two vectors; multiplies the the first
-			 * vector by the transpose of the second vector and places the matrix result
-			 * into this matrix. This matrix must be be as big or bigger than
-			 * getSize(v1)xgetSize(v2).
+			 * Computes the outer product of the two vectors; multiplies the the first vector by the transpose of the
+			 * second vector and places the matrix result into this matrix. This matrix must be be as big or bigger than
+			 * getSize(v1) x getSize(v2).
 			 */
 
 			/**
 			 * Sets the value of this matrix to sum of itself and matrix m1.
 			 *
 			 * @param m1
-			 *            the other matrix (rotMatrix wird bei ca. Z 386 mit Null
-			 *            initialisiert
+			 *            the other matrix (rotMatrix wird bei ca. Z 386 mit Null initialisiert
 			 *
-			 *            rotMatrix entspricht: K = SUM(vectorPoint1 * vectorPoint'1^T)
-			 *            in der
-			 *            Kanatani Nomenklatur
+			 *            rotMatrix entspricht: K = SUM(vectorPoint1 * vectorPoint'1^T) in der Kanatani Nomenklatur
 			 */
 			rotMatrix.add(addMatrix);
 
