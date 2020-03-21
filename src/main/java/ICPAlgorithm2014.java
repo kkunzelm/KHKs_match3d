@@ -47,7 +47,9 @@ class ICPAlgorithm2014 {
 	private boolean refineSparse; // nur jeder xte Punkte wird verwendet
 	private double refineSparseParameter;
 
-	private int steps;
+	private int iterationSteps;
+
+	boolean runVerbose = false;
 
 
 	/** call this class like this:
@@ -114,7 +116,6 @@ class ICPAlgorithm2014 {
 		//--------------------------------------------------------------------------------------------------------------
 		//	Initialize variables
 		//--------------------------------------------------------------------------------------------------------------
-		boolean runVerbose = false;
 
 		int distanceOrderCount;
 		int distOrderWrite;
@@ -135,8 +136,6 @@ class ICPAlgorithm2014 {
 			System.out.println("Translation Vector:" + translationVector);
 		}
 
-		baseWorkPoints = new Point3d[baseDataPoints.length];
-		correspondingPoints = new int[baseWorkPoints.length];
 		Point3d baseDataCenter = new Point3d();
 		Point3d targetModelCenter = new Point3d();
 
@@ -161,23 +160,29 @@ class ICPAlgorithm2014 {
 		 * translation is applied the next set of corresponding point-pairs is determined in the next iteration the
 		 * rotation and translation, however, is always determined in total using the modelPoints and dataPoints.
 		 */
-		transformBaseWorkPoints(rotationMatrix, translationVector, baseWorkPoints, runVerbose);
-
-		boolean finished = false;
-
+		baseWorkPoints = transformBaseWorkPoints(rotationMatrix, translationVector);
 
 
 		//--------------------------------------------------------------------------------------------------------------
 		//	Iterations
 		//--------------------------------------------------------------------------------------------------------------
-		while (!finished) {
+		boolean iterationsFinished = false;
 
-			steps++;
+		while (!iterationsFinished) {
+
+			iterationSteps++;
 
 			//----------------------------------------------------------------------------------------------------------
 			//	find corresponding points
 			//----------------------------------------------------------------------------------------------------------
-			findNearestNeighbor(runVerbose);
+			correspondingPoints = new int[baseDataPoints.length];
+
+			for (int i = 0; i < baseWorkPoints.length; i++) {
+				correspondingPoints[i] = findNearestNeighborIndex(baseWorkPoints[i]);
+			}
+
+			if (runVerbose)
+				System.out.println("Computed corresponding points");
 
 			/*
 			* dist_order lists the indices of the workPoints (dataPoints) in increasing distance to their corresponding
@@ -265,12 +270,12 @@ class ICPAlgorithm2014 {
 				System.out.println();
 
 				if (error < ERROR_BOUND) {
-					finished = true;
+					iterationsFinished = true;
 				}
 				if (Math.abs(error - lastError) / error < ERROR_DIFF) {
 					// KHK: relative improvement less then
 					// ERROR_DIFF, at present: < 0.1% change
-					finished = true;
+					iterationsFinished = true;
 				}
 				lastError = error;
 				lastStdDev = stdDev;
@@ -279,7 +284,7 @@ class ICPAlgorithm2014 {
 				//------------------------------------------------------------------------------------------------------
 				//	Not enough corresponding points
 				//------------------------------------------------------------------------------------------------------
-				finished = true;
+				iterationsFinished = true;
 			}
 		} // while(!finished) // finished, or aborted.
 
@@ -291,7 +296,7 @@ class ICPAlgorithm2014 {
 		System.out.println("*******************************");
 		System.out.println("*******************************");
 		System.out.println();
-		System.out.println("Finished after " + steps + " steps.");
+		System.out.println("Finished after " + iterationSteps + " steps.");
 		System.out.println();
 		System.out.println("*******************************");
 		System.out.println("*******************************");
@@ -306,6 +311,70 @@ class ICPAlgorithm2014 {
 	* 										MAIN CALCULATIONS
 	*
 	##################################################################################################################*/
+
+	private Point3d[] transformBaseWorkPoints(Matrix3d rotationMatrix, Vector3d translationVector)
+	{
+		Point3d[] transformedWorkPoints = new Point3d[baseDataPoints.length];
+		Point3d workPoint;
+
+		// *************************************************
+		// creating new work point & apply initial transform
+		// *************************************************
+
+		for (int i = 0; i < transformedWorkPoints.length; i++) {
+			workPoint = new Point3d(baseDataPoints[i]);
+
+			rotationMatrix.transform(workPoint);
+			workPoint.add(translationVector);
+
+			transformedWorkPoints[i] = workPoint;
+		}
+
+		if (runVerbose)
+			System.out.println("Finished initial transform");
+
+		return transformedWorkPoints;
+	}
+
+	private int findNearestNeighborIndex(Point3d baseWorkPoint) {
+
+		// KHK den Teil mit x0, x1 verstehe ich nicht.
+		// So wie ich das verstehe, müssen alle Werte gleich Null werden und werden sie auch.
+		// Soll das sicherstellen, dass es keine Werte außerhalb der Bounding-Box gibt?
+
+		// x0..z1 are the distances OUTSIDE the bounding box
+		double x0 = modelCorner0.x - baseWorkPoint.x;
+		if (x0 < 0.0)
+			x0 = 0.0;
+
+		double x1 = baseWorkPoint.x - modelCorner1.x;
+		if (x1 < 0.0)
+			x1 = 0.0;
+
+		double y0 = modelCorner0.y - baseWorkPoint.y;
+		if (y0 < 0.0)
+			y0 = 0.0;
+
+		double y1 = baseWorkPoint.y - modelCorner1.y;
+		if (y1 < 0.0)
+			y1 = 0.0;
+
+		double z0 = modelCorner0.z - baseWorkPoint.z;
+		if (z0 < 0.0)
+			z0 = 0.0;
+
+		double z1 = baseWorkPoint.z - modelCorner1.z;
+		if (z1 < 0.0)
+			z1 = 0.0;
+
+		return modelTree.findNearest(
+				baseWorkPoint,
+				Double.POSITIVE_INFINITY,
+				(x0 * x0) + (x1 * x1),
+				(y0 * y0) + (y1 * y1),
+				(z0 * z0) + (z1 * z1)
+		);
+	}
 
 
 	private double[][] buildTransformationMatrix(Matrix3d rotationMatrix, Vector3d translationVector) {
@@ -361,7 +430,7 @@ class ICPAlgorithm2014 {
 
 		if (runVerbose) {
 			System.out.println("Result of the current iteration:");
-			System.out.println("Rotation Matrix of step:" + steps);
+			System.out.println("Rotation Matrix of step:" + iterationSteps);
 			System.out.println(rotationMatrix.toString());
 			System.out.println("Translation Vector:" + translationVector);
 		}
@@ -751,79 +820,6 @@ class ICPAlgorithm2014 {
 			distanceOrderCount = distOrderWrite;
 		}
 		return distanceOrderCount;
-	}
-
-	private void findNearestNeighbor(boolean runVerbose) {
-		Point3d baseWorkPoint;
-		double x0;
-		double x1;
-		double y0;
-		double y1;
-		double z0;
-		double z1;// - find corresponding pairs into int list
-
-		for (int i = 0; i < baseWorkPoints.length; i++) {
-			baseWorkPoint = baseWorkPoints[i];
-			// KHK den Teil mit x0, x1 verstehe ich nicht.
-			// So wie ich das verstehe, müssen alle Werte gleich Null werden und werden sie
-			// auch.
-			// Soll das sicherstellen, dass es keine Werte außerhalb der Bounding-Box gibt?
-
-			// x0..z1 are the distances OUTSIDE the bounding box
-			x0 = modelCorner0.x - baseWorkPoint.x;
-			if (x0 < 0.0) {
-				x0 = 0.0;
-			}
-			x1 = baseWorkPoint.x - modelCorner1.x;
-			if (x1 < 0.0) {
-				x1 = 0.0;
-			}
-			y0 = modelCorner0.y - baseWorkPoint.y;
-			if (y0 < 0.0) {
-				y0 = 0.0;
-			}
-			y1 = baseWorkPoint.y - modelCorner1.y;
-			if (y1 < 0.0) {
-				y1 = 0.0;
-			}
-			z0 = modelCorner0.z - baseWorkPoint.z;
-			if (z0 < 0.0) {
-				z0 = 0.0;
-			}
-			z1 = baseWorkPoint.z - modelCorner1.z;
-			if (z1 < 0.0) {
-				z1 = 0.0;
-			}
-
-			correspondingPoints[i] = modelTree.findNearest(
-					baseWorkPoint,
-					Double.POSITIVE_INFINITY,
-					(x0 * x0) + (x1 * x1),
-					(y0 * y0) + (y1 * y1),
-					(z0 * z0) + (z1 * z1)
-			);
-
-		}
-
-		if (runVerbose) System.out.println("Computed nearest points");
-	}
-
-	private void transformBaseWorkPoints(Matrix3d rotationMatrix, Vector3d translationVector, Point3d[] baseWorkPoints,
-										 boolean runVerbose)
-	{
-		// ******************************************
-		// - apply transform to data points, creating new set
-		// *******************************************
-		for (int i = 0; i < baseDataPoints.length; i++) {
-			baseWorkPoints[i] = new Point3d(baseDataPoints[i]);
-			// hier: erst Rotation, dann Translation...
-			rotationMatrix.transform(baseWorkPoints[i]);
-			baseWorkPoints[i].add(translationVector);
-			// System.out.println("DataPoints und Workpoints:"+dataPoints[i]+"
-			// "+workPoints[i]);
-		}
-
-		if (runVerbose)	System.out.println("Finished initial transform");
 	}
 
 	/*##################################################################################################################
