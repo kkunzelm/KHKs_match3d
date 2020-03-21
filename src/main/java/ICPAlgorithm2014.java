@@ -28,6 +28,7 @@ class ICPAlgorithm2014 {
 	private int[] correspondingPoints;
 	private int[] distanceOrder;
 	private int[] modelUnique;
+	int validDistancesCtr; // used distances in distanceOrder
 	private int minimumValidPoints; // Mindestanzahl gültiger Pixel
 	private boolean refine;
 	private boolean refineUnique; // klingt als ob jeder Punkt berücksichtigt wird
@@ -117,9 +118,6 @@ class ICPAlgorithm2014 {
 		//	Initialize variables
 		//--------------------------------------------------------------------------------------------------------------
 
-		int distanceOrderCount;
-		int distOrderWrite;
-
 		// start calculating
 		if (runVerbose)	System.out.println("Calculating...");
 
@@ -184,52 +182,56 @@ class ICPAlgorithm2014 {
 			if (runVerbose)
 				System.out.println("Computed corresponding points");
 
+			//----------------------------------------------------------------------------------------------------------
+			//	refine corresponding point pairs
+			//----------------------------------------------------------------------------------------------------------
 			/*
-			* dist_order lists the indices of the workPoints (dataPoints) in increasing distance to their corresponding
-			* points.
-			* distanceOrderCount describes how many "used" data/work points are actually in the list.
-			* All beyond this count have no corresponding model point.
-			* distOrderWrite is a writing index
-			*/
+			 * distanceOrder lists the indices of the workPoints (dataPoints) with increasing distance to their
+			 * corresponding points.
+			 */
 			if ((distanceOrder == null) || (distanceOrder.length < baseWorkPoints.length)) {
 				distanceOrder = new int[baseWorkPoints.length];
-				System.out.println("Warning: Redoing dist_order");
+				System.out.println("Warning: Redoing distanceOrder");
 			}
 
-			// init ("unsorted");
-			distOrderWrite = 0;
+			/* Find valid point pairs:
+			 * validDistancesCtr describes how many "used" data/work points are actually in the list.
+			 * All beyond this count have no corresponding model point.
+			 * distOrderWrite is a writing index
+			 */
+			int distOrderWrite = 0;
 			for (int i = 0; i < distanceOrder.length; i++) {
 				if (correspondingPoints[i] >= 0) {
 					distanceOrder[distOrderWrite++] = i;
 				}
 			}
-			distanceOrderCount = distOrderWrite;
+			validDistancesCtr = distOrderWrite;
+			
+			// KHK das war der Originalaufruf: sort(0, validDistancesCtr-1);
+			sortDistanceOrderKH(0, validDistancesCtr - 1); // Aufruf meiner Variante
 
-
-			//----------------------------------------------------------------------------------------------------------
-			//	refine corresponding points
-			//----------------------------------------------------------------------------------------------------------
 			/* Here, the set of corresponding points can be further trimmed down to improve convergence criteria, such
 			* as rejecting pairs with too high a distance (multiple of average distance, or a certain percentage of
 			* points
 			*/
 			if (refine) {
-				distanceOrderCount = refineCorrespondingPoints(distanceOrderCount, lastError, lastStdDev);
+				// eliminate specific point pairs & adjust validDistancesCtr & distanceOrder
+				refineCorrespondingPointPairs(lastError, lastStdDev);
 			}
 
 
 			//----------------------------------------------------------------------------------------------------------
 			//	find centroids
 			//----------------------------------------------------------------------------------------------------------
-			calculateCentroids(runVerbose, distanceOrderCount, baseDataCenter, targetModelCenter, rotMatrix, addMatrix);
+			calculateCentroids(baseDataCenter, targetModelCenter, rotMatrix, addMatrix);
 
 
 			//----------------------------------------------------------------------------------------------------------
 			//	Minimize
 			//----------------------------------------------------------------------------------------------------------
-			// if (distanceOrderCount >= 3) { //... war Originalaufruf: Modifikation für minimumValidPoints
+			// if (validDistancesCtr >= 3) { //... war Originalaufruf: Modifikation für minimumValidPoints
 			System.out.println("Minimum valid points: " + minimumValidPoints);
-			if (distanceOrderCount >= minimumValidPoints) {
+			if (validDistancesCtr >= minimumValidPoints) {
 				if (runVerbose) {
 					System.out.println("Minimizing...");
 					System.out.println("Kanatani's Correlation Matrix K: ");
@@ -239,24 +241,24 @@ class ICPAlgorithm2014 {
 				//------------------------------------------------------------------------------------------------------
 				//	calculate SVD singular value decomposition
 				//------------------------------------------------------------------------------------------------------
-				calcSingularValueComposition(runVerbose, rotationMatrix, translationVector, baseDataCenter,
+				calcSingularValueComposition(rotationMatrix, translationVector, baseDataCenter,
 						targetModelCenter, rotMatrix, rotationArray
 				);
 
 				//------------------------------------------------------------------------------------------------------
 				//	Apply motion (preliminary)
 				//------------------------------------------------------------------------------------------------------
-				applySVDTransformation(runVerbose, rotationMatrix, translationVector);
+				applySVDTransformation(rotationMatrix, translationVector);
 
 
 				//------------------------------------------------------------------------------------------------------
 				//	Calculate Error
 				//------------------------------------------------------------------------------------------------------
 				// KHK: ab hier Abstandsmass berechnet , Fehler der minimiert werden soll
-				error = getError(distanceOrderCount);
+				error = getError();
 
 				// variance
-				stdDev = getStdDev(runVerbose, distanceOrderCount, rotationMatrix, translationVector, error);
+				stdDev = getStdDev(rotationMatrix, translationVector, error);
 
 				// KHK Interaktion mit Applet auskommentieren evtl. als Abfrage:
 				// if (!callFromMatching) ... then belassen, else ignorieren und unten weiterarbeiten
@@ -265,7 +267,7 @@ class ICPAlgorithm2014 {
 				// error *= visualScale;
 
 				System.out.println();
-				System.out.println("Error: " + error + " with " + distanceOrderCount + " points");
+				System.out.println("Error: " + error + " with " + validDistancesCtr + " points");
 				System.out.println("stdDef: " + stdDev);
 				System.out.println();
 
@@ -415,15 +417,14 @@ class ICPAlgorithm2014 {
 		return transformationMatrix;
 	}
 
-	private double getStdDev(boolean runVerbose, int distanceOrderCount, Matrix3d rotationMatrix,
-							 Vector3d translationVector, double error) {
+	private double getStdDev(Matrix3d rotationMatrix, Vector3d translationVector, double error) {
 		double variance = 0;
-		for (int i = 0; i < distanceOrderCount; i++) {
+		for (int i = 0; i < validDistancesCtr; i++) {
 			int j = distanceOrder[i]; // = i if unsorted
 			variance += (error - (baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]])))
 					* (error - (baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]])));
 		}
-		variance = variance / distanceOrderCount;
+		variance = variance / validDistancesCtr;
 		double stdDev = Math.sqrt(variance);
 
 		// Now the current error is known
@@ -437,10 +438,10 @@ class ICPAlgorithm2014 {
 		return stdDev;
 	}
 
-	private double getError(int distanceOrderCount) {
+	private double getError() {
 		double error;// c = 0;
 		error = 0.0;
-		for (int i = 0; i < distanceOrderCount; i++) {
+		for (int i = 0; i < validDistancesCtr; i++) {
 			int j = distanceOrder[i]; // = i if unsorted
 			// if (corresp[j] >= 0) {
 			// KHK error metric: error = mean of squared distance
@@ -451,13 +452,13 @@ class ICPAlgorithm2014 {
 			// c++;
 			// }
 		}
-		if (distanceOrderCount > 0) {
-			error /= distanceOrderCount;
+		if (validDistancesCtr > 0) {
+			error /= validDistancesCtr;
 		}
 		return error;
 	}
 
-	private void applySVDTransformation(boolean runVerbose, Matrix3d rotationMatrix, Vector3d translationVector) {
+	private void applySVDTransformation(Matrix3d rotationMatrix, Vector3d translationVector) {
 		for (int i = 0; i < baseDataPoints.length; i++) {
 			// Apply Transformation
 			rotationMatrix.transform(baseDataPoints[i], baseWorkPoints[i]);
@@ -492,9 +493,9 @@ class ICPAlgorithm2014 {
 		 */
 	}
 
-	private void calcSingularValueComposition(boolean runVerbose, Matrix3d rotationMatrix, Vector3d translationVector,
-											  Point3d baseDataCenter, Point3d targetModelCenter, GMatrix rotMatrix,
-											  double[][] rotationArray)
+	private void calcSingularValueComposition(Matrix3d rotationMatrix, Vector3d translationVector,
+											  Point3d baseDataCenter, Point3d targetModelCenter,
+											  GMatrix rotMatrix, double[][] rotationArray)
 	{
 		// use Jama, not javax.vecmath (buggy)
 
@@ -587,8 +588,8 @@ class ICPAlgorithm2014 {
 		// falls ja, dann wäre jetzt hier die Translation dieses einen Matching-Schrittes enthalten.
 	}
 
-	private void calculateCentroids(boolean runVerbose, int distanceOrderCount, Point3d baseDataCenter,
-									Point3d targetModelCenter, GMatrix rotMatrix, GMatrix addMatrix)
+	private void calculateCentroids(Point3d baseDataCenter,	Point3d targetModelCenter,
+									GMatrix rotMatrix, GMatrix addMatrix)
 	{
 		// *************************** KHK explanation
 
@@ -600,17 +601,14 @@ class ICPAlgorithm2014 {
 		 * K = SUM(vectorPoint1 * vectorPoint'1^T) --> ^T means transposed
 		 *
 		 * in detail:
-		 *
 		 * Each point consists of 3 coordinates x, y, z Each point is treated as a vector. The coordinates of these
 		 * vectors are arranged vertically: Point1 = ( x1 ) ( y1 ) ( z1 )
 		 *
 		 * Point1'^T = (x'1, y'1, z'1)
-		 *
 		 * The mark "'" means the corresponding point in the second image
 		 *
 		 * The multiplication of the two 3x1 vectors results in a 3x3 matrix = correlationMatrixK.
 		 * The matrices off all points are summarized and result in K
-		 *
 		 */
 		// *************************** KHK explanation
 
@@ -624,7 +622,7 @@ class ICPAlgorithm2014 {
 		// Berechnung des Centroids indem alle Punkte summiert werden und durch die Zahl der Punkte dividiert wird
 		// jede einzelne Achse (x,y,z) wird separat addiert und dividiert (-> Division = .scale)
 
-		for (int i = 0; i < distanceOrderCount; i++) {
+		for (int i = 0; i < validDistancesCtr; i++) {
 			int j = distanceOrder[i]; // = i if unsorted
 			// if (corresp[i] >= 0) {
 			baseDataCenter.add(baseDataPoints[j]);
@@ -633,10 +631,10 @@ class ICPAlgorithm2014 {
 			// }
 		}
 
-		if (distanceOrderCount > 0) {
+		if (validDistancesCtr > 0) {
 			// hier Division durch Zahl der addierten Punkte d.h. wir haben den Mittelwert aller Punkte = Centroid!
-			baseDataCenter.scale(1.0 / ((double) distanceOrderCount));
-			targetModelCenter.scale(1.0 / ((double) distanceOrderCount));
+			baseDataCenter.scale(1.0 / ((double) validDistancesCtr));
+			targetModelCenter.scale(1.0 / ((double) validDistancesCtr));
 		}
 
 		if (runVerbose)	{
@@ -655,7 +653,7 @@ class ICPAlgorithm2014 {
 		GVector baseDataPoint = new GVector(3);
 		GVector targetModelPoint = new GVector(3);
 
-		for (int i = 0; i < distanceOrderCount; i++) {
+		for (int i = 0; i < validDistancesCtr; i++) {
 			int j = distanceOrder[i]; // = i if unsorted
 			// if (corresp[j] >= 0) {
 			baseDataPoint.set(baseDataPoints[j]);
@@ -701,7 +699,7 @@ class ICPAlgorithm2014 {
 		}
 	}
 
-	private int refineCorrespondingPoints(int distanceOrderCount, double lastError, double lastStdDev) {
+	private void refineCorrespondingPointPairs(double lastError, double lastStdDev) {
 		// KHK todo: clip_gradient implementieren
 
 		int distOrderWrite;// REFINE HERE
@@ -712,7 +710,7 @@ class ICPAlgorithm2014 {
 			// This works WITHOUT sorting!
 			double sparseAccum = 0.0;
 			distOrderWrite = 0;
-			for (int i = 0; i < distanceOrderCount; i++) {
+			for (int i = 0; i < validDistancesCtr; i++) {
 				sparseAccum += refineSparseParameter;
 				if (sparseAccum < 1.0) {
 					// write back work point index into list
@@ -722,15 +720,8 @@ class ICPAlgorithm2014 {
 				}
 			}
 
-			distanceOrderCount = distOrderWrite; // update
-
+			validDistancesCtr = distOrderWrite; // update
 		}
-
-		// bring in sorted order
-		// KHK das war der Originalaufruf: sort(0, distanceOrderCount-1);
-		sortKH(0, distanceOrderCount - 1); // Aufruf meiner Variante
-
-		// sort(0, 5);
 
 		// Code for printing all distances, used with no starting
 		// transformation
@@ -743,10 +734,10 @@ class ICPAlgorithm2014 {
 			// kill percentage of points with highest distance
 			// The two faces have about 75% overlap
 			// (approximated value from non-transformed distance values)
-			distanceOrderCount = (int) ((double) distanceOrderCount * refineClipParameter);
+			validDistancesCtr = (int) ((double) validDistancesCtr * refineClipParameter);
 			// no need to flush, since we won't be touching them
 			// ever again!
-			// for (int i=(int)(distanceOrderCount); i<dist_order.length; i++) {
+			// for (int i=(int)(validDistancesCtr); i<dist_order.length; i++) {
 			// corresp[dist_order[i]] = -1; // no corresp point for you!
 			// }
 		}
@@ -757,11 +748,11 @@ class ICPAlgorithm2014 {
 			// the last reported mean distance and a multiple (= refine_clamp_par) of
 			// the current median distance
 
-			double medianDistance = refineClampParameter * sortedDistances(distanceOrderCount / 2);
+			double medianDistance = refineClampParameter * getDistanceToCorrespondingPoint(validDistancesCtr / 2);
 			double lastDistance = refineClampParameter * lastError;
 			distOrderWrite = 0;
-			for (int i = 0; i < distanceOrderCount; i++) {
-				double di = sortedDistances(i);
+			for (int i = 0; i < validDistancesCtr; i++) {
+				double di = getDistanceToCorrespondingPoint(i);
 				if ((di <= lastDistance) && (di <= medianDistance)) {
 					// write back work point index into list
 					distanceOrder[distOrderWrite++] = distanceOrder[i];
@@ -769,10 +760,10 @@ class ICPAlgorithm2014 {
 			}
 			System.out.println("refineClamp");
 			System.out.println("lastStdDev: " + lastStdDev + "\n" + "lastError: " + lastError + "\n"
-					+ "workPoints.length: " + baseWorkPoints.length + "\n" + "distanceOrderCount: "
-					+ distanceOrderCount + "\n" + "distOrderWrite: " + distOrderWrite);
-			distanceOrderCount = distOrderWrite; // update
+					+ "workPoints.length: " + baseWorkPoints.length + "\n" + "validDistancesCtr: "
+					+ validDistancesCtr + "\n" + "distOrderWrite: " + distOrderWrite);
 
+			validDistancesCtr = distOrderWrite; // update
 		}
 
 		if (refineSd) {
@@ -781,8 +772,8 @@ class ICPAlgorithm2014 {
 			// the current mean distance
 			double distance = refineSdParameter * lastStdDev;
 			distOrderWrite = 0;
-			for (int i = 0; i < distanceOrderCount; i++) {
-				double di = sortedDistances(i);
+			for (int i = 0; i < validDistancesCtr; i++) {
+				double di = getDistanceToCorrespondingPoint(i);
 				if (di <= distance) {
 					// write back work point index into list
 					distanceOrder[distOrderWrite++] = distanceOrder[i];
@@ -790,11 +781,11 @@ class ICPAlgorithm2014 {
 			}
 			System.out.println("refineSd");
 			System.out.println("lastStdDev: " + lastStdDev + "\n" + "lastError: " + lastError + "\n"
-					+ "workPoints.length: " + baseWorkPoints.length + "\n" + "distanceOrderCount: "
-					+ distanceOrderCount + "\n" + "distOrderWrite: " + distOrderWrite);
+					+ "baseWorkPoints.length: " + baseWorkPoints.length + "\n" + "validDistancesCtr: "
+					+ validDistancesCtr + "\n" + "distOrderWrite: " + distOrderWrite);
 			System.out.println();
-			distanceOrderCount = distOrderWrite; // update
 
+			validDistancesCtr = distOrderWrite; // update
 		}
 
 		if (refineUnique) {
@@ -802,14 +793,14 @@ class ICPAlgorithm2014 {
 			// EXTREMELY SLOW!
 
 			distOrderWrite = 0;
-			for (int i = 0; i < distanceOrderCount; i++) {
+			for (int i = 0; i < validDistancesCtr; i++) {
 				int m = correspondingPoints[distanceOrder[i]]; // model point in question
 				if (modelUnique[m] == 0) {
 					modelUnique[m] = 1;
 					distanceOrder[distOrderWrite++] = distanceOrder[i];
 				}
 				// if (m != -1) {
-				// for (int j=i+1; j<distanceOrderCount; j++) {
+				// for (int j=i+1; j<validDistancesCtr; j++) {
 				// if (corresp[dist_order[j]] == m) {
 				// corresp[dist_order[j]] = -1;
 				// }
@@ -817,9 +808,8 @@ class ICPAlgorithm2014 {
 				// }
 			}
 
-			distanceOrderCount = distOrderWrite;
+			validDistancesCtr = distOrderWrite;
 		}
-		return distanceOrderCount;
 	}
 
 	/*##################################################################################################################
@@ -828,28 +818,25 @@ class ICPAlgorithm2014 {
 	*
 	##################################################################################################################*/
 
-	private double sortedDistances(int i) {
-		int j = distanceOrder[i];
+	private double getDistanceToCorrespondingPoint(int baseWorkPointIdx) {
+		int j = distanceOrder[baseWorkPointIdx];
 		if (correspondingPoints[j] < 0) {
 			return Double.POSITIVE_INFINITY;
 		}
 		return baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]]);
 	}
 
-	// Sort an int-array according to workPoint - modelPoint distance
-	// this was the original quicksort algorithm
+	private void sortDistanceOrderKH(int left, int right) {
+		// Sort an int-array according to workPoint - modelPoint distance
+		// this was the original quicksort algorithm
 
-	// this is my interpretation of a quicksort algorithm from
-	// just as in datastruct.KDNode.java I had to replace the original QS algorith
-	// with my interpretation of QS as I always got stack overflow errors
-	// with the original version
+		// this is my interpretation of a quicksort algorithm from just as in datastruct.KDNode.java
+		// I had to replace the original QS algorith with my interpretation of QS as I always got stack overflow errors
+		// with the original version
 
-	// from: http://algs4.cs.princeton.edu/23quicksort/Quick3way.java.html
-	// quicksort the arraypoints] using 3-way partitioning
+		// from: http://algs4.cs.princeton.edu/23quicksort/Quick3way.java.html
+		// quicksort the arraypoints using 3-way partitioning
 
-	private void sortKH(int left, int right) {
-
-		// System.out.println(" (sorting from "+left+" to "+right+")");
 		if (right <= left)
 			return;
 		int lt = left, gt = right;
@@ -869,19 +856,18 @@ class ICPAlgorithm2014 {
 		}
 
 		// dist_order[left..lt-1] < temp = dist_order[lt..gt] < dist_order[gt+1..right].
-		sortKH(left, lt - 1);
-		sortKH(gt + 1, right);
+		sortDistanceOrderKH(left, lt - 1);
+		sortDistanceOrderKH(gt + 1, right);
 
 		assert isSorted(distanceOrder, left, right);
 
 	}
 
-	// compareTo_KH(Point3d v, Point3d w)
-	// replaces:
-	// ---> dist_order[i].compareTo(temp)
-	// ---> v.compareTo(w)
-
 	private int compareToKH(int v, int w) {
+		// compareTo_KH(Point3d v, Point3d w) replaces:
+		// ---> dist_order[i].compareTo(temp)
+		// ---> v.compareTo(w)
+
 		int result;
 		if (v < w) {
 			result = -1;
@@ -895,17 +881,17 @@ class ICPAlgorithm2014 {
 		}
 	}
 
-	// exchange distOrder[i] and distOrder[j]
 	private void exch(int[] distOrder, int i, int j) {
+		// exchange distOrder[i] and distOrder[j]
+
 		int swap = distOrder[i];
 		distOrder[i] = distOrder[j];
 		distOrder[j] = swap;
 	}
 
-	//**********************************************************************
-	// Check if array is sorted - useful for debugging
-	//**********************************************************************
 	private boolean isSorted(int[] distOrder, int left, int right) {
+		// Check if array is sorted - useful for debugging
+
 		for (int i = left + 1; i <= right; i++) {
 			if (distOrder[i] < distOrder[i - 1])
 				return false;
