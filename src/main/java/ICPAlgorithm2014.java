@@ -378,325 +378,6 @@ class ICPAlgorithm2014 {
 		);
 	}
 
-
-	private double[][] buildTransformationMatrix(Matrix3d rotationMatrix, Vector3d translationVector) {
-		double[][] transformationMatrix = new double[4][4];
-
-		transformationMatrix[0][0] = rotationMatrix.getElement(0, 0);
-		transformationMatrix[1][0] = rotationMatrix.getElement(1, 0);
-		transformationMatrix[2][0] = rotationMatrix.getElement(2, 0);
-		transformationMatrix[3][0] = 0.0;
-
-		transformationMatrix[0][1] = rotationMatrix.getElement(0, 1);
-		transformationMatrix[1][1] = rotationMatrix.getElement(1, 1);
-		transformationMatrix[2][1] = rotationMatrix.getElement(2, 1);
-		transformationMatrix[3][1] = 0.0;
-
-		transformationMatrix[0][2] = rotationMatrix.getElement(0, 2);
-		transformationMatrix[1][2] = rotationMatrix.getElement(1, 2);
-		transformationMatrix[2][2] = rotationMatrix.getElement(2, 2);
-		transformationMatrix[3][2] = 0.0;
-
-		transformationMatrix[0][3] = translationVector.x;
-		transformationMatrix[1][3] = translationVector.y;
-		transformationMatrix[2][3] = translationVector.z;
-		transformationMatrix[3][3] = 1.0;
-
-		// if (runVerbose){
-		System.out.println("Transformation Matrix formated for TransformJ: ");
-		System.out.println(transformationMatrix[0][0] + "\t" + transformationMatrix[0][1] + "\t"
-				+ transformationMatrix[0][2] + "\t" + transformationMatrix[0][3]);
-		System.out.println(transformationMatrix[1][0] + "\t" + transformationMatrix[1][1] + "\t"
-				+ transformationMatrix[1][2] + "\t" + transformationMatrix[1][3]);
-		System.out.println(transformationMatrix[2][0] + "\t" + transformationMatrix[2][1] + "\t"
-				+ transformationMatrix[2][2] + "\t" + transformationMatrix[2][3]);
-		System.out.println(transformationMatrix[3][0] + "\t" + transformationMatrix[3][1] + "\t"
-				+ transformationMatrix[3][2] + "\t" + transformationMatrix[3][3]);
-//		}
-
-		return transformationMatrix;
-	}
-
-	private double getStdDev(Matrix3d rotationMatrix, Vector3d translationVector, double error) {
-		double variance = 0;
-		for (int i = 0; i < validDistancesCtr; i++) {
-			int j = distanceOrder[i]; // = i if unsorted
-			variance += (error - (baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]])))
-					* (error - (baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]])));
-		}
-		variance = variance / validDistancesCtr;
-		double stdDev = Math.sqrt(variance);
-
-		// Now the current error is known
-
-		if (runVerbose) {
-			System.out.println("Result of the current iteration:");
-			System.out.println("Rotation Matrix of step:" + iterationSteps);
-			System.out.println(rotationMatrix.toString());
-			System.out.println("Translation Vector:" + translationVector);
-		}
-		return stdDev;
-	}
-
-	private double getError() {
-		double error;// c = 0;
-		error = 0.0;
-		for (int i = 0; i < validDistancesCtr; i++) {
-			int j = distanceOrder[i]; // = i if unsorted
-			// if (corresp[j] >= 0) {
-			// KHK error metric: error = mean of squared distance
-			error += baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]]);
-			// KH: distanceSquared is a method
-			// of tuple3d from vecmath
-
-			// c++;
-			// }
-		}
-		if (validDistancesCtr > 0) {
-			error /= validDistancesCtr;
-		}
-		return error;
-	}
-
-	private void applySVDTransformation(Matrix3d rotationMatrix, Vector3d translationVector) {
-		for (int i = 0; i < baseDataPoints.length; i++) {
-			// Apply Transformation
-			rotationMatrix.transform(baseDataPoints[i], baseWorkPoints[i]);
-			// rotationMatrix ist 3x3 Matrix
-			/**
-			 * Multiply this matrix by the tuple t and and place the result into the tuple
-			 * "result" (result = this*t).
-			 *
-			 * @param t
-			 *            the tuple to be multiplied by this matrix
-			 * @param result
-			 *            the tuple into which the product is placed public final void
-			 *            transform(Tuple3d t, Tuple3d result)
-			 *
-			 *            Hier werden also die NEUEN WorkPoints (alte werden überschreiben)
-			 *            generiert, indem anhand der unveränderten dataPoints mit der
-			 *            neuen, besseren Transformation die workPoints an neuer Stelle für
-			 *            die folgende Berechnung der nearest neighbor Struktur verwendet
-			 *            werden!!
-			 *
-			 */
-
-			baseWorkPoints[i].add(translationVector);
-		}
-		if (runVerbose) {
-			System.out.println("Applied new and better transform");
-		}
-		/*
-		 * for (int i=0; i<dataPoints.length;i++){
-		 * System.out.println("DataPoints/WorkPoints: "+dataPoints[i]+" "+workPoints[i])
-		 * ; }
-		 */
-	}
-
-	private void calcSingularValueComposition(Matrix3d rotationMatrix, Vector3d translationVector,
-											  Point3d baseDataCenter, Point3d targetModelCenter,
-											  GMatrix centroidRotationMatrix, double[][] rotationArray)
-	{
-		// use Jama, not javax.vecmath (buggy)
-
-		centroidRotationMatrix.getRow(0, rotationArray[0]);
-		// getRow(int row, double[] array) Places the values of the specified row
-		// into the array parameter.
-
-		centroidRotationMatrix.getRow(1, rotationArray[1]);
-		centroidRotationMatrix.getRow(2, rotationArray[2]);
-
-		Matrix rJamaMatrix = new Matrix(rotationArray, 3, 3);
-
-		Matrix uJama;
-		Matrix wJama;
-		Matrix vJama;
-		if (runVerbose) {
-			System.out.println("  computing SUV");
-		}
-		SingularValueDecomposition svdJama = new SingularValueDecomposition(rJamaMatrix);
-		uJama = svdJama.getU();
-		wJama = svdJama.getS(); // diagonal matrix
-		vJama = svdJama.getV();
-
-		GMatrix U = new GMatrix(3, 3);
-		GMatrix W = new GMatrix(3, 3);
-		GMatrix V = new GMatrix(3, 3);
-
-		for (int i = 0; i < 3; i++) {
-			for (int j = 0; j < 3; j++) {
-				U.setElement(i, j, uJama.get(i, j));
-				W.setElement(i, j, wJama.get(i, j));
-				V.setElement(i, j, vJama.get(i, j));
-			}
-		}
-
-		if (runVerbose) {
-			System.out.println("Matrices U, W, V:");
-			System.out.println(U.toString());
-			System.out.println(W.toString());
-			System.out.println(V.toString());
-
-			System.out.println("Reconstructed centroidRotationMatrix:");
-
-			// W.mulTransposeRight(W, V);
-			// W.mul(W, V);
-			// centroidRotationMatrix.mul(U, W);
-			// centroidRotationMatrix.mulTransposeLeft(U, W);
-			System.out.println(centroidRotationMatrix.toString());
-		}
-
-		if (runVerbose) {
-			System.out.println("  extracting rot and trans");
-		}
-		// centroidRotationMatrix.mul(U, V);
-		centroidRotationMatrix.mulTransposeRight(U, V);
-		// mulTransposeRight(Matrix3d m1, Matrix3d m2)
-		// Multiplies matrix m1 times the transpose of matrix m2, and places the result into this.
-		// also: U*V^T
-
-		centroidRotationMatrix.get(rotationMatrix);
-		// centroidRotationMatrix.get(Matrix3d m1) Places the values in the upper 3x3 of this GMatrix into the matrix m1.
-
-		// centroidRotationMatrix = GMatrix - die Korrelationsmatrix K in rotationMatrix ist jetzt die neue, aktuelle Rotationsmatrix
-		// für diesen einen Korrekturschritt enthalten
-
-		/*
-		 * Places the values in the upper 3x3 of this GMatrix into the matrix m1.
-		 *
-		 * @param m1 The matrix that will hold the new values public final void get(Matrix3d m1)
-		 */
-
-		// Test rotationMatrix, since GMatrix has no determinant...
-		if (rotationMatrix.determinant() < 0.0) {
-			/* if (runVerbose) */System.out.println("Negative determinant!");
-			U.setElement(0, 2, -U.getElement(0, 2));
-			U.setElement(1, 2, -U.getElement(1, 2));
-			U.setElement(2, 2, -U.getElement(2, 2));
-			// centroidRotationMatrix.mul(U, V);
-			centroidRotationMatrix.mulTransposeRight(U, V);
-			centroidRotationMatrix.get(rotationMatrix);
-		}
-
-		// rotationMatrix.transpose(); // das wäre dann die Umkehrfunktion der Rotationsmatrix R^T = R^-1
-
-		// KH wichtig: wie bei meiner Vorwärtstransformation wird einer der beiden Centroidvektoren rotiert, bevor die
-		// Differenz als Translationsvektor berechnet wird.
-		rotationMatrix.transform(baseDataCenter);
-		translationVector.sub(targetModelCenter, baseDataCenter);
-		// werden die bisherigen Inhalte des Translationsvektor hier wirklich sauber überschrieben?
-		// falls ja, dann wäre jetzt hier die Translation dieses einen Matching-Schrittes enthalten.
-	}
-
-	private void calcCentroids(Point3d baseDataCenter, Point3d targetModelCenter)
-	{
-		// - estimate rotation and translation
-		baseDataCenter.set(0.0, 0.0, 0.0);
-		targetModelCenter.set(0.0, 0.0, 0.0);
-
-		// Berechnung des Centroids indem alle Punkte summiert werden und durch die Zahl der Punkte dividiert wird
-		// jede einzelne Achse (x,y,z) wird separat addiert und dividiert (-> Division = .scale)
-
-		for (int i = 0; i < validDistancesCtr; i++) {
-			int j = distanceOrder[i]; // = i if unsorted
-			// if (corresp[i] >= 0) {
-			baseDataCenter.add(baseDataPoints[j]);
-			targetModelCenter.add(targetModelPoints[correspondingPoints[j]]);
-			// c++;
-			// }
-		}
-
-		if (validDistancesCtr > 0) {
-			// hier Division durch Zahl der addierten Punkte d.h. wir haben den Mittelwert aller Punkte = Centroid!
-			baseDataCenter.scale(1.0 / ((double) validDistancesCtr));
-			targetModelCenter.scale(1.0 / ((double) validDistancesCtr));
-		}
-
-		if (runVerbose)	{
-			System.out.println("Centers:");
-			System.out.println("  " + targetModelCenter);
-			System.out.println("  " + baseDataCenter);
-		}
-	}
-
-	private GMatrix calcCentroidRotationMatrix(Point3d baseDataCenter, Point3d targetModelCenter) {
-		// *************************** KHK explanation
-		/*
-		 * this method implements formula (3) of Kanatani/Horn and others the weight is set to "1". It is a scaling
-		 * factor only. KHK exactly the same method is implemented for the corresponding landmark registration
-		 * Formula (3):
-		 *
-		 * K = SUM(vectorPoint1 * vectorPoint'1^T) --> ^T means transposed
-		 *
-		 * in detail:
-		 * Each point consists of 3 coordinates x, y, z Each point is treated as a vector. The coordinates of these
-		 * vectors are arranged vertically: Point1 = ( x1 ) ( y1 ) ( z1 )
-		 *
-		 * Point1'^T = (x'1, y'1, z'1)
-		 * The mark "'" means the corresponding point in the second image
-		 *
-		 * The multiplication of the two 3x1 vectors results in a 3x3 matrix = correlationMatrixK.
-		 * The matrices off all points are summarized and result in K
-		 */
-		// *************************** KHK explanation
-
-		GMatrix rotMatrix = new GMatrix(3,3);
-		GMatrix addMatrix = new GMatrix(3, 3);
-
-		GVector dataCenterVector = new GVector(baseDataCenter);
-		GVector modelCenterVector = new GVector(targetModelCenter);
-		// * Constructs a new GVector (javax.vecmath) and copies the initial values from the specified tuple
-		// - in this case a Point3d.
-		// * Point 3d = java.lang.Object
-		// +--javax.vecmath.Tuple3d +--javax.vecmath.Point3d
-
-		GVector baseDataPoint = new GVector(3);
-		GVector targetModelPoint = new GVector(3);
-
-		for (int i = 0; i < validDistancesCtr; i++) {
-			int j = distanceOrder[i]; // = i if unsorted
-			// if (corresp[j] >= 0) {
-			baseDataPoint.set(baseDataPoints[j]);
-			targetModelPoint.set(targetModelPoints[correspondingPoints[j]]);
-			// ACHTUNG diese Zeile ist enorm wichtig!!!!
-			// hier wird bei jedem Durchgang eine bessere Zuordnung für die Punktelisten verwendet. Dadurch wird die
-			// Rotation und Translation auch immer bessere Ergebnisse erzielen. Es ist aber immer nur eine Rotation/
-			// Translation... es wird hier nichts akkumuliert!!
-
-			// Sets the value of this vector to the vector difference of itself and vector (this = this - vector).
-			baseDataPoint.sub(dataCenterVector);
-			targetModelPoint.sub(modelCenterVector);
-			// Punkte Liste - von den einzelnen Punkten wird der Centroid abgezogen
-
-			/*
-			 * Computes the outer product of the two vectors; multiplies the the first vector by the transpose of the
-			 * second vector and places the matrix result into this matrix. This matrix must be be as big or bigger than
-			 * getSize(v1) x getSize(v2).
-			 */
-			addMatrix.mul(targetModelPoint, baseDataPoint);
-			// addMatrix ist als GMatrix 3x3 definiert
-			// addMatrix entspricht Kanatani's im Prinzip: vectorPoint1 * vectorPoint'1^T
-			// targetModelPoint = row vector, baseDataPoint = column vector
-			// Vektormultiplikation, targetModelPoint, baseDataPoint sind Vektoren
-
-			/*
-			 * Sets the value of this matrix to sum of itself and matrix m1.
-			 * the other matrix (rotMatrix wird bei ca. Z 386 mit Null initialisiert
-			 * rotMatrix entspricht: K = SUM(vectorPoint1 * vectorPoint'1^T) in der Kanatani Nomenklatur
-			 */
-			rotMatrix.add(addMatrix);
-
-		}
-
-		if (runVerbose) {
-			System.out.println(
-					"Finished to calculate the correlation matrix K: Accumulated centers and rotation Matrix"
-			);
-		}
-
-		return rotMatrix;
-	}
-
 	private void refineCorrespondingPointPairs(double lastError, double lastStdDev) {
 		// KHK todo: clip_gradient implementieren
 
@@ -721,13 +402,6 @@ class ICPAlgorithm2014 {
 			validDistancesCtr = distOrderWrite; // update
 		}
 
-		// Code for printing all distances, used with no starting
-		// transformation
-		// for (int i=0; i<dist_order.length; i++) {
-		// System.out.println(sort_dist(i));
-		// }
-		// System.exit(0);
-
 		if (refineClip) {
 			// kill percentage of points with highest distance
 			// The two faces have about 75% overlap
@@ -735,9 +409,6 @@ class ICPAlgorithm2014 {
 			validDistancesCtr = (int) ((double) validDistancesCtr * refineClipParameter);
 			// no need to flush, since we won't be touching them
 			// ever again!
-			// for (int i=(int)(validDistancesCtr); i<dist_order.length; i++) {
-			// corresp[dist_order[i]] = -1; // no corresp point for you!
-			// }
 		}
 
 		if (refineClamp) {
@@ -797,17 +468,306 @@ class ICPAlgorithm2014 {
 					modelUnique[m] = 1;
 					distanceOrder[distOrderWrite++] = distanceOrder[i];
 				}
-				// if (m != -1) {
-				// for (int j=i+1; j<validDistancesCtr; j++) {
-				// if (corresp[dist_order[j]] == m) {
-				// corresp[dist_order[j]] = -1;
-				// }
-				// }
-				// }
 			}
 
 			validDistancesCtr = distOrderWrite;
 		}
+	}
+
+	private void calcCentroids(Point3d baseDataCenter, Point3d targetModelCenter)
+	{
+		// - estimate rotation and translation
+		baseDataCenter.set(0.0, 0.0, 0.0);
+		targetModelCenter.set(0.0, 0.0, 0.0);
+
+		// Berechnung des Centroids indem alle Punkte summiert werden und durch die Zahl der Punkte dividiert wird
+		// jede einzelne Achse (x,y,z) wird separat addiert und dividiert (-> Division = .scale)
+
+		for (int i = 0; i < validDistancesCtr; i++) {
+			int j = distanceOrder[i]; // = i if unsorted
+
+			baseDataCenter.add(baseDataPoints[j]);
+			targetModelCenter.add(targetModelPoints[correspondingPoints[j]]);
+		}
+
+		if (validDistancesCtr > 0) {
+			// hier Division durch Zahl der addierten Punkte d.h. wir haben den Mittelwert aller Punkte = Centroid!
+			baseDataCenter.scale(1.0 / ((double) validDistancesCtr));
+			targetModelCenter.scale(1.0 / ((double) validDistancesCtr));
+		}
+
+		if (runVerbose)	{
+			System.out.println("Centers:");
+			System.out.println("  " + targetModelCenter);
+			System.out.println("  " + baseDataCenter);
+		}
+	}
+
+	private GMatrix calcCentroidRotationMatrix(Point3d baseDataCenter, Point3d targetModelCenter) {
+		// *************************** KHK explanation
+		/*
+		 * this method implements formula (3) of Kanatani/Horn and others the weight is set to "1". It is a scaling
+		 * factor only. KHK exactly the same method is implemented for the corresponding landmark registration
+		 * Formula (3):
+		 *
+		 * K = SUM(vectorPoint1 * vectorPoint'1^T) --> ^T means transposed
+		 *
+		 * in detail:
+		 * Each point consists of 3 coordinates x, y, z Each point is treated as a vector. The coordinates of these
+		 * vectors are arranged vertically: Point1 = ( x1 ) ( y1 ) ( z1 )
+		 *
+		 * Point1'^T = (x'1, y'1, z'1)
+		 * The mark "'" means the corresponding point in the second image
+		 *
+		 * The multiplication of the two 3x1 vectors results in a 3x3 matrix = correlationMatrixK.
+		 * The matrices off all points are summarized and result in K
+		 */
+		// *************************** KHK explanation
+
+		GMatrix rotMatrix = new GMatrix(3,3);
+		GMatrix addMatrix = new GMatrix(3, 3);
+
+		GVector dataCenterVector = new GVector(baseDataCenter);
+		GVector modelCenterVector = new GVector(targetModelCenter);
+		// * Constructs a new GVector (javax.vecmath) and copies the initial values from the specified tuple
+		// - in this case a Point3d.
+
+		GVector baseDataPoint = new GVector(3);
+		GVector targetModelPoint = new GVector(3);
+
+		for (int i = 0; i < validDistancesCtr; i++) {
+			int j = distanceOrder[i]; // = i if unsorted
+			// if (corresp[j] >= 0) {
+			baseDataPoint.set(baseDataPoints[j]);
+			targetModelPoint.set(targetModelPoints[correspondingPoints[j]]);
+			// ACHTUNG diese Zeile ist enorm wichtig!!!!
+			// hier wird bei jedem Durchgang eine bessere Zuordnung für die Punktelisten verwendet. Dadurch wird die
+			// Rotation und Translation auch immer bessere Ergebnisse erzielen. Es ist aber immer nur eine Rotation/
+			// Translation... es wird hier nichts akkumuliert!!
+
+			// Sets the value of this vector to the vector difference of itself and vector (this = this - vector).
+			baseDataPoint.sub(dataCenterVector);
+			targetModelPoint.sub(modelCenterVector);
+			// Punkte Liste - von den einzelnen Punkten wird der Centroid abgezogen
+
+			/*
+			 * Computes the outer product of the two vectors; multiplies the the first vector by the transpose of the
+			 * second vector and places the matrix result into this matrix. This matrix must be be as big or bigger than
+			 * getSize(v1) x getSize(v2).
+			 */
+			addMatrix.mul(targetModelPoint, baseDataPoint);
+			// addMatrix ist als GMatrix 3x3 definiert
+			// addMatrix entspricht Kanatani's im Prinzip: vectorPoint1 * vectorPoint'1^T
+			// targetModelPoint = row vector, baseDataPoint = column vector
+			// Vektormultiplikation, targetModelPoint, baseDataPoint sind Vektoren
+
+			/*
+			 * Sets the value of this matrix to sum of itself and matrix m1.
+			 * the other matrix (rotMatrix wird bei ca. Z 386 mit Null initialisiert
+			 * rotMatrix entspricht: K = SUM(vectorPoint1 * vectorPoint'1^T) in der Kanatani Nomenklatur
+			 */
+			rotMatrix.add(addMatrix);
+
+		}
+
+		if (runVerbose) {
+			System.out.println(
+					"Finished to calculate the correlation matrix K: Accumulated centers and rotation Matrix"
+			);
+		}
+
+		return rotMatrix;
+	}
+
+	private void calcSingularValueComposition(Matrix3d rotationMatrix, Vector3d translationVector,
+											  Point3d baseDataCenter, Point3d targetModelCenter,
+											  GMatrix centroidRotationMatrix, double[][] rotationArray)
+	{
+		// use Jama, not javax.vecmath (buggy)
+
+		centroidRotationMatrix.getRow(0, rotationArray[0]);
+		// getRow(int row, double[] array) Places the values of the specified row
+		// into the array parameter.
+
+		centroidRotationMatrix.getRow(1, rotationArray[1]);
+		centroidRotationMatrix.getRow(2, rotationArray[2]);
+
+		Matrix rJamaMatrix = new Matrix(rotationArray, 3, 3);
+
+		Matrix uJama;
+		Matrix wJama;
+		Matrix vJama;
+		if (runVerbose) {
+			System.out.println("  computing SUV");
+		}
+		SingularValueDecomposition svdJama = new SingularValueDecomposition(rJamaMatrix);
+		uJama = svdJama.getU();
+		wJama = svdJama.getS(); // diagonal matrix
+		vJama = svdJama.getV();
+
+		GMatrix U = new GMatrix(3, 3);
+		GMatrix W = new GMatrix(3, 3);
+		GMatrix V = new GMatrix(3, 3);
+
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 3; j++) {
+				U.setElement(i, j, uJama.get(i, j));
+				W.setElement(i, j, wJama.get(i, j));
+				V.setElement(i, j, vJama.get(i, j));
+			}
+		}
+
+		if (runVerbose) {
+			System.out.println("Matrices U, W, V:");
+			System.out.println(U.toString());
+			System.out.println(W.toString());
+			System.out.println(V.toString());
+
+			System.out.println("Reconstructed centroidRotationMatrix:");
+			System.out.println(centroidRotationMatrix.toString());
+		}
+
+		if (runVerbose) {
+			System.out.println("  extracting rot and trans");
+		}
+
+		centroidRotationMatrix.mulTransposeRight(U, V);
+		// mulTransposeRight(Matrix3d m1, Matrix3d m2)
+		// Multiplies matrix m1 times the transpose of matrix m2, and places the result into this.
+		// also: U*V^T
+
+		/*
+		 * Places the values in the upper 3x3 of this GMatrix into the matrix m1.
+		 * @param m1 The matrix that will hold the new values public final void get(Matrix3d m1)
+		 */
+		centroidRotationMatrix.get(rotationMatrix);
+		// centroidRotationMatrix.get(Matrix3d m1) Places the values in the upper 3x3 of this GMatrix into the matrix m1
+		// centroidRotationMatrix = GMatrix - die Korrelationsmatrix K in rotationMatrix ist jetzt die neue, aktuelle
+		// Rotationsmatrix für diesen einen Korrekturschritt enthalten
+
+		// Test rotationMatrix, since GMatrix has no determinant...
+		if (rotationMatrix.determinant() < 0.0) {
+			if (runVerbose) System.out.println("Negative determinant!");
+			U.setElement(0, 2, -U.getElement(0, 2));
+			U.setElement(1, 2, -U.getElement(1, 2));
+			U.setElement(2, 2, -U.getElement(2, 2));
+
+			centroidRotationMatrix.mulTransposeRight(U, V);
+			centroidRotationMatrix.get(rotationMatrix);
+		}
+
+		// rotationMatrix.transpose(); // das wäre dann die Umkehrfunktion der Rotationsmatrix R^T = R^-1
+
+		// KH wichtig: wie bei meiner Vorwärtstransformation wird einer der beiden Centroidvektoren rotiert, bevor die
+		// Differenz als Translationsvektor berechnet wird.
+		rotationMatrix.transform(baseDataCenter);
+		translationVector.sub(targetModelCenter, baseDataCenter);
+		// werden die bisherigen Inhalte des Translationsvektor hier wirklich sauber überschrieben?
+		// falls ja, dann wäre jetzt hier die Translation dieses einen Matching-Schrittes enthalten.
+	}
+
+	private void applySVDTransformation(Matrix3d rotationMatrix, Vector3d translationVector) {
+		for (int i = 0; i < baseDataPoints.length; i++) {
+			// Apply Transformation
+			rotationMatrix.transform(baseDataPoints[i], baseWorkPoints[i]);
+			// rotationMatrix ist 3x3 Matrix
+
+			/*
+			 * Multiply this matrix by the tuple t and and place the result into the tuple: "result" (result = this*t).
+			 *
+			 * @param t
+			 *            the tuple to be multiplied by this matrix
+			 * @param result
+			 * 		the tuple into which the product is placed public final void transform(Tuple3d t, Tuple3d result)
+			 *
+			 * Hier werden also die NEUEN WorkPoints (alte werden überschreiben) generiert, indem anhand der
+			 * unveränderten dataPoints mit der neuen, besseren Transformation die workPoints an neuer Stelle für die
+			 * folgende Berechnung der nearest neighbor Struktur verwendet werden!!
+			 */
+
+			baseWorkPoints[i].add(translationVector);
+		}
+		if (runVerbose) {
+			System.out.println("Applied new and better transform");
+		}
+	}
+
+	private double getError() {
+		double error;// c = 0;
+		error = 0.0; // KHK error metric: error = mean of squared distance
+
+		for (int i = 0; i < validDistancesCtr; i++) {
+			int j = distanceOrder[i];
+			error += baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]]);
+			// KH: distanceSquared is a method of tuple3d from vecmath
+		}
+
+		if (validDistancesCtr > 0) {
+			error /= validDistancesCtr;
+		}
+
+		return error;
+	}
+
+	private double getStdDev(Matrix3d rotationMatrix, Vector3d translationVector, double error) {
+		double variance = 0;
+
+		for (int i = 0; i < validDistancesCtr; i++) {
+			int j = distanceOrder[i];
+			variance += (error - (baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]])))
+					* (error - (baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]])));
+		}
+
+		variance = variance / validDistancesCtr;
+		double stdDev = Math.sqrt(variance);
+
+		// Now the current error is known
+		if (runVerbose) {
+			System.out.println("Result of the current iteration:");
+			System.out.println("Rotation Matrix of step:" + iterationSteps);
+			System.out.println(rotationMatrix.toString());
+			System.out.println("Translation Vector:" + translationVector);
+		}
+
+		return stdDev;
+	}
+
+	private double[][] buildTransformationMatrix(Matrix3d rotationMatrix, Vector3d translationVector) {
+		double[][] transformationMatrix = new double[4][4];
+
+		transformationMatrix[0][0] = rotationMatrix.getElement(0, 0);
+		transformationMatrix[1][0] = rotationMatrix.getElement(1, 0);
+		transformationMatrix[2][0] = rotationMatrix.getElement(2, 0);
+		transformationMatrix[3][0] = 0.0;
+
+		transformationMatrix[0][1] = rotationMatrix.getElement(0, 1);
+		transformationMatrix[1][1] = rotationMatrix.getElement(1, 1);
+		transformationMatrix[2][1] = rotationMatrix.getElement(2, 1);
+		transformationMatrix[3][1] = 0.0;
+
+		transformationMatrix[0][2] = rotationMatrix.getElement(0, 2);
+		transformationMatrix[1][2] = rotationMatrix.getElement(1, 2);
+		transformationMatrix[2][2] = rotationMatrix.getElement(2, 2);
+		transformationMatrix[3][2] = 0.0;
+
+		transformationMatrix[0][3] = translationVector.x;
+		transformationMatrix[1][3] = translationVector.y;
+		transformationMatrix[2][3] = translationVector.z;
+		transformationMatrix[3][3] = 1.0;
+
+		// if (runVerbose){
+		System.out.println("Transformation Matrix formated for TransformJ: ");
+		System.out.println(transformationMatrix[0][0] + "\t" + transformationMatrix[0][1] + "\t"
+				+ transformationMatrix[0][2] + "\t" + transformationMatrix[0][3]);
+		System.out.println(transformationMatrix[1][0] + "\t" + transformationMatrix[1][1] + "\t"
+				+ transformationMatrix[1][2] + "\t" + transformationMatrix[1][3]);
+		System.out.println(transformationMatrix[2][0] + "\t" + transformationMatrix[2][1] + "\t"
+				+ transformationMatrix[2][2] + "\t" + transformationMatrix[2][3]);
+		System.out.println(transformationMatrix[3][0] + "\t" + transformationMatrix[3][1] + "\t"
+				+ transformationMatrix[3][2] + "\t" + transformationMatrix[3][3]);
+//		}
+
+		return transformationMatrix;
 	}
 
 	/*##################################################################################################################
