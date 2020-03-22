@@ -227,7 +227,7 @@ class ICPAlgorithm2014 {
 			centroidRotationMatrix = calcCentroidRotationMatrix(baseDataCenter, targetModelCenter);
 
 			//----------------------------------------------------------------------------------------------------------
-			//	Minimize
+			//	Minimize distances
 			//----------------------------------------------------------------------------------------------------------
 			// if (validDistancesCtr >= 3) { //... war Originalaufruf: Modifikation für minimumValidPoints
 			System.out.println("Minimum valid points: " + minimumValidPoints);
@@ -250,39 +250,35 @@ class ICPAlgorithm2014 {
 				//------------------------------------------------------------------------------------------------------
 				applySVDTransformation(rotationMatrix, translationVector);
 
-
 				//------------------------------------------------------------------------------------------------------
 				//	Calculate Error
 				//------------------------------------------------------------------------------------------------------
-				// KHK: ab hier Abstandsmass berechnet , Fehler der minimiert werden soll
+				// KHK: ab hier Abstandsmass berechnet: Fehler der minimiert werden soll
 				error = getError();
 
-				// variance
+				// get standard deviation
 				stdDev = getStdDev(rotationMatrix, translationVector, error);
-
-				// KHK Interaktion mit Applet auskommentieren evtl. als Abfrage:
-				// if (!callFromMatching) ... then belassen, else ignorieren und unten weiterarbeiten
-				// if (runVerbose) System.out.println("Set new transform in scene");
-				// check abort conditions
-				// error *= visualScale;
 
 				System.out.println();
 				System.out.println("Error: " + error + " with " + validDistancesCtr + " points");
 				System.out.println("stdDef: " + stdDev);
 				System.out.println();
 
+				//------------------------------------------------------------------------------------------------------
+				//	Evaluate abortion criteria
+				//------------------------------------------------------------------------------------------------------
 				if (error < ERROR_BOUND) {
 					iterationsFinished = true;
 				}
 				if (Math.abs(error - lastError) / error < ERROR_DIFF) {
-					// KHK: relative improvement less then
-					// ERROR_DIFF, at present: < 0.1% change
+					// KHK: relative improvement less then ERROR_DIFF, at present: < 0.1% change
 					iterationsFinished = true;
 				}
+
 				lastError = error;
 				lastStdDev = stdDev;
 
-			} else { // if (c > 3)
+			} else {
 				//------------------------------------------------------------------------------------------------------
 				//	Not enough corresponding points
 				//------------------------------------------------------------------------------------------------------
@@ -384,11 +380,10 @@ class ICPAlgorithm2014 {
 		int distOrderWrite;// REFINE HERE
 
 		if (refineSparse) {
-
-			// kill a certain percentage of points.
-			// This works WITHOUT sorting!
+			// kill a certain percentage of points. This works WITHOUT sorting!
 			double sparseAccum = 0.0;
 			distOrderWrite = 0;
+
 			for (int i = 0; i < validDistancesCtr; i++) {
 				sparseAccum += refineSparseParameter;
 				if (sparseAccum < 1.0) {
@@ -404,22 +399,19 @@ class ICPAlgorithm2014 {
 
 		if (refineClip) {
 			// kill percentage of points with highest distance
-			// The two faces have about 75% overlap
-			// (approximated value from non-transformed distance values)
+			// The two faces have about 75% overlap (approximated value from non-transformed distance values)
 			validDistancesCtr = (int) ((double) validDistancesCtr * refineClipParameter);
-			// no need to flush, since we won't be touching them
-			// ever again!
+			// no need to flush, since we won't be touching them ever again!
 		}
 
 		if (refineClamp) {
-
-			// kill all points farther away than a multiple (= refine_clamp_par) of
-			// the last reported mean distance and a multiple (= refine_clamp_par) of
-			// the current median distance
+			// kill all points farther away than a multiple (= refine_clamp_par) of the last reported mean distance and
+			// a multiple (= refine_clamp_par) of the current median distance
 
 			double medianDistance = refineClampParameter * getDistanceToCorrespondingPoint(validDistancesCtr / 2);
 			double lastDistance = refineClampParameter * lastError;
 			distOrderWrite = 0;
+
 			for (int i = 0; i < validDistancesCtr; i++) {
 				double di = getDistanceToCorrespondingPoint(i);
 				if ((di <= lastDistance) && (di <= medianDistance)) {
@@ -427,6 +419,7 @@ class ICPAlgorithm2014 {
 					distanceOrder[distOrderWrite++] = distanceOrder[i];
 				}
 			}
+
 			System.out.println("refineClamp");
 			System.out.println("lastStdDev: " + lastStdDev + "\n" + "lastError: " + lastError + "\n"
 					+ "workPoints.length: " + baseWorkPoints.length + "\n" + "validDistancesCtr: "
@@ -437,10 +430,10 @@ class ICPAlgorithm2014 {
 
 		if (refineSd) {
 			// sd = standardDeviation
-			// kill all points farther away than a multiple of the standard deviation from
-			// the current mean distance
+			// kill all points farther away than a multiple of the standard deviation from the current mean distance
 			double distance = refineSdParameter * lastStdDev;
 			distOrderWrite = 0;
+
 			for (int i = 0; i < validDistancesCtr; i++) {
 				double di = getDistanceToCorrespondingPoint(i);
 				if (di <= distance) {
@@ -448,6 +441,7 @@ class ICPAlgorithm2014 {
 					distanceOrder[distOrderWrite++] = distanceOrder[i];
 				}
 			}
+
 			System.out.println("refineSd");
 			System.out.println("lastStdDev: " + lastStdDev + "\n" + "lastError: " + lastError + "\n"
 					+ "baseWorkPoints.length: " + baseWorkPoints.length + "\n" + "validDistancesCtr: "
@@ -458,10 +452,9 @@ class ICPAlgorithm2014 {
 		}
 
 		if (refineUnique) {
-			// allow only the closest work point per model point
-			// EXTREMELY SLOW!
-
+			// allow only the closest work point per model point. EXTREMELY SLOW!
 			distOrderWrite = 0;
+
 			for (int i = 0; i < validDistancesCtr; i++) {
 				int m = correspondingPoints[distanceOrder[i]]; // model point in question
 				if (modelUnique[m] == 0) {
@@ -474,8 +467,7 @@ class ICPAlgorithm2014 {
 		}
 	}
 
-	private void calcCentroids(Point3d baseDataCenter, Point3d targetModelCenter)
-	{
+	private void calcCentroids(Point3d baseDataCenter, Point3d targetModelCenter) {
 		// - estimate rotation and translation
 		baseDataCenter.set(0.0, 0.0, 0.0);
 		targetModelCenter.set(0.0, 0.0, 0.0);
@@ -584,26 +576,20 @@ class ICPAlgorithm2014 {
 											  GMatrix centroidRotationMatrix, double[][] rotationArray)
 	{
 		// use Jama, not javax.vecmath (buggy)
+		if (runVerbose)
+			System.out.println("  computing SUV");
 
+		// getRow(int row, double[] array) Places the values of the specified row into the array parameter.
 		centroidRotationMatrix.getRow(0, rotationArray[0]);
-		// getRow(int row, double[] array) Places the values of the specified row
-		// into the array parameter.
-
 		centroidRotationMatrix.getRow(1, rotationArray[1]);
 		centroidRotationMatrix.getRow(2, rotationArray[2]);
 
 		Matrix rJamaMatrix = new Matrix(rotationArray, 3, 3);
-
-		Matrix uJama;
-		Matrix wJama;
-		Matrix vJama;
-		if (runVerbose) {
-			System.out.println("  computing SUV");
-		}
 		SingularValueDecomposition svdJama = new SingularValueDecomposition(rJamaMatrix);
-		uJama = svdJama.getU();
-		wJama = svdJama.getS(); // diagonal matrix
-		vJama = svdJama.getV();
+
+		Matrix uJama = svdJama.getU();
+		Matrix wJama = svdJama.getS(); // diagonal matrix
+		Matrix vJama = svdJama.getV();
 
 		GMatrix U = new GMatrix(3, 3);
 		GMatrix W = new GMatrix(3, 3);
@@ -633,8 +619,7 @@ class ICPAlgorithm2014 {
 
 		centroidRotationMatrix.mulTransposeRight(U, V);
 		// mulTransposeRight(Matrix3d m1, Matrix3d m2)
-		// Multiplies matrix m1 times the transpose of matrix m2, and places the result into this.
-		// also: U*V^T
+		// Multiplies matrix m1 times the transpose of matrix m2, and places the result into this. also: U*V^T
 
 		/*
 		 * Places the values in the upper 3x3 of this GMatrix into the matrix m1.
@@ -647,7 +632,9 @@ class ICPAlgorithm2014 {
 
 		// Test rotationMatrix, since GMatrix has no determinant...
 		if (rotationMatrix.determinant() < 0.0) {
-			if (runVerbose) System.out.println("Negative determinant!");
+			if (runVerbose)
+				System.out.println("Negative determinant!");
+
 			U.setElement(0, 2, -U.getElement(0, 2));
 			U.setElement(1, 2, -U.getElement(1, 2));
 			U.setElement(2, 2, -U.getElement(2, 2));
@@ -673,10 +660,10 @@ class ICPAlgorithm2014 {
 			// rotationMatrix ist 3x3 Matrix
 
 			/*
-			 * Multiply this matrix by the tuple t and and place the result into the tuple: "result" (result = this*t).
+			 * Multiply this matrix by the tuple t and and place the result into the tuple: "result" (result = this * t)
 			 *
 			 * @param t
-			 *            the tuple to be multiplied by this matrix
+			 * 		the tuple to be multiplied by this matrix
 			 * @param result
 			 * 		the tuple into which the product is placed public final void transform(Tuple3d t, Tuple3d result)
 			 *
@@ -772,15 +759,17 @@ class ICPAlgorithm2014 {
 
 	/*##################################################################################################################
 	*
-	* 										Helper sorting functions
+	* 											Helper functions
 	*
 	##################################################################################################################*/
 
 	private double getDistanceToCorrespondingPoint(int baseWorkPointIdx) {
 		int j = distanceOrder[baseWorkPointIdx];
+
 		if (correspondingPoints[j] < 0) {
 			return Double.POSITIVE_INFINITY;
 		}
+
 		return baseWorkPoints[j].distanceSquared(targetModelPoints[correspondingPoints[j]]);
 	}
 
@@ -797,10 +786,12 @@ class ICPAlgorithm2014 {
 
 		if (right <= left)
 			return;
+
 		int lt = left, gt = right;
 		int temp1 = distanceOrder[left];
 		int i = left;
 		int cmp;
+
 		while (i <= gt) {
 
 			cmp = compareToKH(distanceOrder[i], temp1);
@@ -825,8 +816,8 @@ class ICPAlgorithm2014 {
 		// compareTo_KH(Point3d v, Point3d w) replaces:
 		// ---> dist_order[i].compareTo(temp)
 		// ---> v.compareTo(w)
-
 		int result;
+
 		if (v < w) {
 			result = -1;
 			return result;
@@ -841,8 +832,8 @@ class ICPAlgorithm2014 {
 
 	private void exch(int[] distOrder, int i, int j) {
 		// exchange distOrder[i] and distOrder[j]
-
 		int swap = distOrder[i];
+
 		distOrder[i] = distOrder[j];
 		distOrder[j] = swap;
 	}
@@ -854,86 +845,8 @@ class ICPAlgorithm2014 {
 			if (distOrder[i] < distOrder[i - 1])
 				return false;
 		}
+
 		return true;
-	}
-
-	/*##################################################################################################################
-	*
-	* 											NOT USED
-	*
-	##################################################################################################################*/
-
-	// KHK todo als eigenes Objekt mit Rückgabe von stdDev und mean ... anlegen a la
-	// ParameterICP
-	// Methode funktioniert, wird im Moment nicht genutzt
-	private double getStdDevSquaredEuklid(int dist_order_count, Point3d[] workPoints, Point3d[] modelPoints,
-			int[] corresp, Matrix3d rotMatrix, Vector3d transVector) {
-
-		for (int i = 0; i < baseDataPoints.length; i++) {
-			workPoints[i] = new Point3d(baseDataPoints[i]);
-			// hier: erst Rotation, dann Translation...
-			rotMatrix.transform(workPoints[i]);
-			workPoints[i].add(transVector);
-			// System.out.println("DataPoints und Workpoints:"+dataPoints[i]+"
-			// "+workPoints[i]);
-		}
-
-		double error = 0.0;
-		for (int i = 0; i < dist_order_count; i++) {
-			int j = distanceOrder[i]; // = i if unsorted
-			// if (corresp[j] >= 0) {
-			// KHK error metric: error = mean of squared distance
-			error += workPoints[j].distanceSquared(modelPoints[corresp[j]]); // KH: distanceSquared is a method of
-																				// tuple3d from vecmath
-			// c++;
-			// }
-		}
-		if (dist_order_count > 0) {
-			error /= dist_order_count;
-		}
-
-		// variance
-		double variance = 0;
-
-		for (int i = 0; i < dist_order_count; i++) {
-			int j = distanceOrder[i]; // = i if unsorted
-			variance += (error - (workPoints[j].distanceSquared(modelPoints[corresp[j]])))
-					* (error - (workPoints[j].distanceSquared(modelPoints[corresp[j]])));
-		}
-		variance = variance / dist_order_count;
-
-		return Math.sqrt(variance);
-	}
-
-	// Methode funktioniert, wird im Moment nicht genutzt
-	private double getMeanSquaredEuklid(int dist_order_count, Point3d[] workPoints, Point3d[] modelPoints,
-			int[] corresp, Matrix3d rotMatrix, Vector3d transVector) {
-
-		for (int i = 0; i < baseDataPoints.length; i++) {
-			workPoints[i] = new Point3d(baseDataPoints[i]);
-			// hier: erst Rotation, dann Translation...
-			rotMatrix.transform(workPoints[i]);
-			workPoints[i].add(transVector);
-			// System.out.println("DataPoints und Workpoints:"+dataPoints[i]+"
-			// "+workPoints[i]);
-		}
-
-		double error = 0.0;
-		for (int i = 0; i < dist_order_count; i++) {
-			int j = distanceOrder[i]; // = i if unsorted
-			// if (corresp[j] >= 0) {
-			// KHK error metric: error = mean of squared distance
-			error += workPoints[j].distanceSquared(modelPoints[corresp[j]]); // KH: distanceSquared is a method of
-																				// tuple3d from vecmath
-			// c++;
-			// }
-		}
-		if (dist_order_count > 0) {
-			error /= dist_order_count;
-		}
-
-		// System.out.println("inside getMeanSquaredEuklid: error = " + error);
-		return error;
 	}
 
 }
