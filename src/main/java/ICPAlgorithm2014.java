@@ -137,8 +137,7 @@ class ICPAlgorithm2014 {
 		Point3d baseDataCenter = new Point3d();
 		Point3d targetModelCenter = new Point3d();
 
-		GMatrix rotMatrix = new GMatrix(3, 3); // GMatrix = general matrix
-		GMatrix addMatrix = new GMatrix(3, 3);
+		GMatrix centroidRotationMatrix = new GMatrix(3, 3); // GMatrix = general matrix
 
 		// rotation matrix, as two-dim. array
 		double[][] rotationArray = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
@@ -206,7 +205,7 @@ class ICPAlgorithm2014 {
 				}
 			}
 			validDistancesCtr = distOrderWrite;
-			
+
 			// KHK das war der Originalaufruf: sort(0, validDistancesCtr-1);
 			sortDistanceOrderKH(0, validDistancesCtr - 1); // Aufruf meiner Variante
 
@@ -221,10 +220,11 @@ class ICPAlgorithm2014 {
 
 
 			//----------------------------------------------------------------------------------------------------------
-			//	find centroids
+			//	find centroids & calculate centroid rotation matrix
 			//----------------------------------------------------------------------------------------------------------
-			calculateCentroids(baseDataCenter, targetModelCenter, rotMatrix, addMatrix);
+			calcCentroids(baseDataCenter, targetModelCenter);
 
+			centroidRotationMatrix = calcCentroidRotationMatrix(baseDataCenter, targetModelCenter);
 
 			//----------------------------------------------------------------------------------------------------------
 			//	Minimize
@@ -235,14 +235,14 @@ class ICPAlgorithm2014 {
 				if (runVerbose) {
 					System.out.println("Minimizing...");
 					System.out.println("Kanatani's Correlation Matrix K: ");
-					System.out.println(rotMatrix.toString());
+					System.out.println(centroidRotationMatrix.toString());
 				}
 
 				//------------------------------------------------------------------------------------------------------
 				//	calculate SVD singular value decomposition
 				//------------------------------------------------------------------------------------------------------
 				calcSingularValueComposition(rotationMatrix, translationVector, baseDataCenter,
-						targetModelCenter, rotMatrix, rotationArray
+						targetModelCenter, centroidRotationMatrix, rotationArray
 				);
 
 				//------------------------------------------------------------------------------------------------------
@@ -495,16 +495,16 @@ class ICPAlgorithm2014 {
 
 	private void calcSingularValueComposition(Matrix3d rotationMatrix, Vector3d translationVector,
 											  Point3d baseDataCenter, Point3d targetModelCenter,
-											  GMatrix rotMatrix, double[][] rotationArray)
+											  GMatrix centroidRotationMatrix, double[][] rotationArray)
 	{
 		// use Jama, not javax.vecmath (buggy)
 
-		rotMatrix.getRow(0, rotationArray[0]);
+		centroidRotationMatrix.getRow(0, rotationArray[0]);
 		// getRow(int row, double[] array) Places the values of the specified row
 		// into the array parameter.
 
-		rotMatrix.getRow(1, rotationArray[1]);
-		rotMatrix.getRow(2, rotationArray[2]);
+		centroidRotationMatrix.getRow(1, rotationArray[1]);
+		centroidRotationMatrix.getRow(2, rotationArray[2]);
 
 		Matrix rJamaMatrix = new Matrix(rotationArray, 3, 3);
 
@@ -537,28 +537,28 @@ class ICPAlgorithm2014 {
 			System.out.println(W.toString());
 			System.out.println(V.toString());
 
-			System.out.println("Reconstructed rotMatrix:");
+			System.out.println("Reconstructed centroidRotationMatrix:");
 
 			// W.mulTransposeRight(W, V);
 			// W.mul(W, V);
-			// rotMatrix.mul(U, W);
-			// rotMatrix.mulTransposeLeft(U, W);
-			System.out.println(rotMatrix.toString());
+			// centroidRotationMatrix.mul(U, W);
+			// centroidRotationMatrix.mulTransposeLeft(U, W);
+			System.out.println(centroidRotationMatrix.toString());
 		}
 
 		if (runVerbose) {
 			System.out.println("  extracting rot and trans");
 		}
-		// rotMatrix.mul(U, V);
-		rotMatrix.mulTransposeRight(U, V);
+		// centroidRotationMatrix.mul(U, V);
+		centroidRotationMatrix.mulTransposeRight(U, V);
 		// mulTransposeRight(Matrix3d m1, Matrix3d m2)
 		// Multiplies matrix m1 times the transpose of matrix m2, and places the result into this.
 		// also: U*V^T
 
-		rotMatrix.get(rotationMatrix);
-		// rotMatrix.get(Matrix3d m1) Places the values in the upper 3x3 of this GMatrix into the matrix m1.
+		centroidRotationMatrix.get(rotationMatrix);
+		// centroidRotationMatrix.get(Matrix3d m1) Places the values in the upper 3x3 of this GMatrix into the matrix m1.
 
-		// rotMatrix = GMatrix - die Korrelationsmatrix K in rotationMatrix ist jetzt die neue, aktuelle Rotationsmatrix
+		// centroidRotationMatrix = GMatrix - die Korrelationsmatrix K in rotationMatrix ist jetzt die neue, aktuelle Rotationsmatrix
 		// für diesen einen Korrekturschritt enthalten
 
 		/*
@@ -573,9 +573,9 @@ class ICPAlgorithm2014 {
 			U.setElement(0, 2, -U.getElement(0, 2));
 			U.setElement(1, 2, -U.getElement(1, 2));
 			U.setElement(2, 2, -U.getElement(2, 2));
-			// rotMatrix.mul(U, V);
-			rotMatrix.mulTransposeRight(U, V);
-			rotMatrix.get(rotationMatrix);
+			// centroidRotationMatrix.mul(U, V);
+			centroidRotationMatrix.mulTransposeRight(U, V);
+			centroidRotationMatrix.get(rotationMatrix);
 		}
 
 		// rotationMatrix.transpose(); // das wäre dann die Umkehrfunktion der Rotationsmatrix R^T = R^-1
@@ -588,36 +588,11 @@ class ICPAlgorithm2014 {
 		// falls ja, dann wäre jetzt hier die Translation dieses einen Matching-Schrittes enthalten.
 	}
 
-	private void calculateCentroids(Point3d baseDataCenter,	Point3d targetModelCenter,
-									GMatrix rotMatrix, GMatrix addMatrix)
+	private void calcCentroids(Point3d baseDataCenter, Point3d targetModelCenter)
 	{
-		// *************************** KHK explanation
-
-		/*
-		 * this method implements formula (3) of Kanatani/Horn and others the weight is set to "1". It is a scaling
-		 * factor only. KHK exactly the same method is implemented for the corresponding landmark registration
-		 * Formula (3):
-		 *
-		 * K = SUM(vectorPoint1 * vectorPoint'1^T) --> ^T means transposed
-		 *
-		 * in detail:
-		 * Each point consists of 3 coordinates x, y, z Each point is treated as a vector. The coordinates of these
-		 * vectors are arranged vertically: Point1 = ( x1 ) ( y1 ) ( z1 )
-		 *
-		 * Point1'^T = (x'1, y'1, z'1)
-		 * The mark "'" means the corresponding point in the second image
-		 *
-		 * The multiplication of the two 3x1 vectors results in a 3x3 matrix = correlationMatrixK.
-		 * The matrices off all points are summarized and result in K
-		 */
-		// *************************** KHK explanation
-
 		// - estimate rotation and translation
 		baseDataCenter.set(0.0, 0.0, 0.0);
 		targetModelCenter.set(0.0, 0.0, 0.0);
-
-		rotMatrix.setZero(); // GMatrix
-		addMatrix.setZero(); // GMatrix
 
 		// Berechnung des Centroids indem alle Punkte summiert werden und durch die Zahl der Punkte dividiert wird
 		// jede einzelne Achse (x,y,z) wird separat addiert und dividiert (-> Division = .scale)
@@ -642,6 +617,31 @@ class ICPAlgorithm2014 {
 			System.out.println("  " + targetModelCenter);
 			System.out.println("  " + baseDataCenter);
 		}
+	}
+
+	private GMatrix calcCentroidRotationMatrix(Point3d baseDataCenter, Point3d targetModelCenter) {
+		// *************************** KHK explanation
+		/*
+		 * this method implements formula (3) of Kanatani/Horn and others the weight is set to "1". It is a scaling
+		 * factor only. KHK exactly the same method is implemented for the corresponding landmark registration
+		 * Formula (3):
+		 *
+		 * K = SUM(vectorPoint1 * vectorPoint'1^T) --> ^T means transposed
+		 *
+		 * in detail:
+		 * Each point consists of 3 coordinates x, y, z Each point is treated as a vector. The coordinates of these
+		 * vectors are arranged vertically: Point1 = ( x1 ) ( y1 ) ( z1 )
+		 *
+		 * Point1'^T = (x'1, y'1, z'1)
+		 * The mark "'" means the corresponding point in the second image
+		 *
+		 * The multiplication of the two 3x1 vectors results in a 3x3 matrix = correlationMatrixK.
+		 * The matrices off all points are summarized and result in K
+		 */
+		// *************************** KHK explanation
+
+		GMatrix rotMatrix = new GMatrix(3,3);
+		GMatrix addMatrix = new GMatrix(3, 3);
 
 		GVector dataCenterVector = new GVector(baseDataCenter);
 		GVector modelCenterVector = new GVector(targetModelCenter);
@@ -663,11 +663,16 @@ class ICPAlgorithm2014 {
 			// Rotation und Translation auch immer bessere Ergebnisse erzielen. Es ist aber immer nur eine Rotation/
 			// Translation... es wird hier nichts akkumuliert!!
 
+			// Sets the value of this vector to the vector difference of itself and vector (this = this - vector).
 			baseDataPoint.sub(dataCenterVector);
 			targetModelPoint.sub(modelCenterVector);
 			// Punkte Liste - von den einzelnen Punkten wird der Centroid abgezogen
-			// Sets the value of this vector to the vector difference of itself and vector (this = this - vector).
 
+			/*
+			 * Computes the outer product of the two vectors; multiplies the the first vector by the transpose of the
+			 * second vector and places the matrix result into this matrix. This matrix must be be as big or bigger than
+			 * getSize(v1) x getSize(v2).
+			 */
 			addMatrix.mul(targetModelPoint, baseDataPoint);
 			// addMatrix ist als GMatrix 3x3 definiert
 			// addMatrix entspricht Kanatani's im Prinzip: vectorPoint1 * vectorPoint'1^T
@@ -675,18 +680,9 @@ class ICPAlgorithm2014 {
 			// Vektormultiplikation, targetModelPoint, baseDataPoint sind Vektoren
 
 			/*
-			 * Computes the outer product of the two vectors; multiplies the the first vector by the transpose of the
-			 * second vector and places the matrix result into this matrix. This matrix must be be as big or bigger than
-			 * getSize(v1) x getSize(v2).
-			 */
-
-			/**
 			 * Sets the value of this matrix to sum of itself and matrix m1.
-			 *
-			 * @param m1
-			 *            the other matrix (rotMatrix wird bei ca. Z 386 mit Null initialisiert
-			 *
-			 *            rotMatrix entspricht: K = SUM(vectorPoint1 * vectorPoint'1^T) in der Kanatani Nomenklatur
+			 * the other matrix (rotMatrix wird bei ca. Z 386 mit Null initialisiert
+			 * rotMatrix entspricht: K = SUM(vectorPoint1 * vectorPoint'1^T) in der Kanatani Nomenklatur
 			 */
 			rotMatrix.add(addMatrix);
 
@@ -697,6 +693,8 @@ class ICPAlgorithm2014 {
 					"Finished to calculate the correlation matrix K: Accumulated centers and rotation Matrix"
 			);
 		}
+
+		return rotMatrix;
 	}
 
 	private void refineCorrespondingPointPairs(double lastError, double lastStdDev) {
