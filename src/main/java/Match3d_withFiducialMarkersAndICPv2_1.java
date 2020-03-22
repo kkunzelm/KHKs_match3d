@@ -24,6 +24,7 @@ import ij.gui.Roi;
 import ij.io.FileInfo;
 import ij.plugin.ContrastEnhancer;
 import ij.plugin.PlugIn;
+import ij.process.ImageConverter;
 import ij.process.ImageProcessor;
 import vecmath.Matrix3d;
 import vecmath.Point3d;
@@ -462,6 +463,14 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn {
 				titles[i] = imp.getTitle();
 			} else {
 				titles[i] = "";
+			}
+		}
+
+		for (int i = 0; i < wList.length; i++) {
+			ImagePlus imp = WindowManager.getImage(wList[i]);
+			if (imp != null) {
+				ImageConverter imageConverter = new ImageConverter(imp);
+				imageConverter.convertToGray32();
 			}
 		}
 
