@@ -19,9 +19,14 @@ class ParameterICP {
 	private boolean refine_unique; // klingt als ob jeder Punkt berücksichtigt wird
 	private int minimum_valid_points; // Mindestanzahl gültiger Pixel;
 
+	private boolean refine_a_priori_landmark;
+	private boolean refine_a_priori_diff_slider;
+	private boolean use_landmark_mask;
+
 	public ParameterICP(boolean refine_clamp, double refine_clamp_par, boolean refine_sd, double refine_sd_par,
-			boolean refine_clip, double refine_clip_par, boolean refine_sparse, double refine_sparse_par,
-			boolean refine_unique, int minimum_valid_points) {
+						boolean refine_clip, double refine_clip_par, boolean refine_sparse, double refine_sparse_par,
+						boolean refine_unique, int minimum_valid_points, boolean refine_a_priori_landmark,
+						boolean refine_a_priori_diff_slider, boolean use_landmark_mask) {
 		this.refine_clamp = refine_clamp;
 		this.refine_clamp_par = refine_clamp_par;
 		this.refine_sd = refine_sd;
@@ -32,6 +37,9 @@ class ParameterICP {
 		this.refine_sparse_par = refine_sparse_par;
 		this.refine_unique = refine_unique;
 		this.minimum_valid_points = minimum_valid_points;
+		this.refine_a_priori_landmark = refine_a_priori_landmark;
+		this.refine_a_priori_diff_slider = refine_a_priori_diff_slider;
+		this.use_landmark_mask = use_landmark_mask;
 	}
 
 	public boolean getRefineClamp() {
@@ -114,11 +122,37 @@ class ParameterICP {
 		this.refine_sparse_par = refine_sparse_par;
 	}
 
+	public boolean getRefineAPrioriLandmark() {
+		return refine_a_priori_landmark;
+	}
+
+	public void setRefineAPrioriLandmark(boolean refine_a_priori_landmark) {
+		this.refine_a_priori_landmark = refine_a_priori_landmark;
+	}
+
+	public boolean getRefineAPrioriDiffSlider() {
+		return refine_a_priori_diff_slider;
+	}
+
+	public void setRefineAPrioriDiffSlider(boolean refine_a_priori_diff_slider) {
+		this.refine_a_priori_diff_slider = refine_a_priori_diff_slider;
+	}
+
+	public boolean getUseLandmarkMask() {
+		return use_landmark_mask;
+	}
+
+	public void setUseLandmarkMask(boolean use_landmark_mask) {
+		this.use_landmark_mask = use_landmark_mask;
+	}
+
 	@Override
 	public String toString() {
 		return "refine_clamp:\t" + refine_clamp + "\tParameter = " + refine_clamp_par + "\n" + "refine_clip:\t"
 				+ refine_clip + "\tParameter  = " + refine_clip_par + "\n" + "refine_sparse:\t" + refine_sparse
-				+ "\tParameter = " + refine_sparse_par + "\n" + "refine_unique:\t" + refine_unique;
+				+ "\tParameter = " + refine_sparse_par + "\n" + "refine_unique:\t" + refine_unique
+				+ "refine_a_priori_landmark:\t" + refine_a_priori_landmark + "\n" + "refine_a_priori_diff_slider:\t"
+				+ refine_a_priori_diff_slider + "\n"+ "use_landmark_mask:\t" + use_landmark_mask;
 	}
 
 }

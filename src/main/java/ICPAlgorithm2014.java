@@ -3,9 +3,6 @@ import Jama.SingularValueDecomposition;
 import datastruct.KDNode;
 import vecmath.*;
 
-import java.util.Arrays;
-import java.util.List;
-
 //todo Root Mean Square ... durchdenken.
 
 // datastruct.KDNode.java muss im gleichen Verzeichnis sein!
@@ -35,6 +32,7 @@ class ICPAlgorithm2014 {
 	private int minimumValidPoints; // Mindestanzahl gültiger Pixel
 	private boolean refine;
 	private boolean refineUnique; // klingt als ob jeder Punkt berücksichtigt wird
+	private boolean refineAPrioriLandmark;
 
 	// clipping ab bestimmter Position im Abstandshistogram, z.B. nur 75 % der niedrigeren Abstände berücksichtigt,
 	// Rest der Punktepaare verworfen
@@ -105,6 +103,8 @@ class ICPAlgorithm2014 {
 		refineSparse = refineParameters.getRefineSparse();
 		refineSparseParameter = refineParameters.getRefineSparsePar(); // data reduction, here 50 %
 		minimumValidPoints = refineParameters.getMinValidPoints();
+
+		refineAPrioriLandmark = refineParameters.getRefineAPrioriLandmark();
 
 		// some preparations
 		distanceOrder = new int[d.length];
@@ -296,6 +296,7 @@ class ICPAlgorithm2014 {
 		//------------------------------------------------------------------------------------------------------
 		//	Apply landmark transformation again for a-priori refinements
 		//------------------------------------------------------------------------------------------------------
+		if (refineAPrioriLandmark) {
 			//------------------------------------------------------------------------------------------------------
 			//	calculate centroids from landmarks
 			//------------------------------------------------------------------------------------------------------
@@ -311,6 +312,7 @@ class ICPAlgorithm2014 {
 			//	Apply motion (preliminary)
 			//------------------------------------------------------------------------------------------------------
 			applySVDTransformation(rotationMatrix, translationVector);
+		}
 
 
 		//--------------------------------------------------------------------------------------------------------------
