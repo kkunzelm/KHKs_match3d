@@ -139,9 +139,6 @@ class ICPAlgorithm2014 {
 
 		GMatrix centroidRotationMatrix = new GMatrix(3, 3); // GMatrix = general matrix
 
-		// rotation matrix, as two-dim. array
-		double[][] rotationArray = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
-
 		double error;
 		double stdDev;
 		double lastError = Double.POSITIVE_INFINITY;
@@ -242,8 +239,7 @@ class ICPAlgorithm2014 {
 				//	calculate SVD singular value decomposition
 				//------------------------------------------------------------------------------------------------------
 				calcSingularValueComposition(rotationMatrix, translationVector, baseDataCenter,
-						targetModelCenter, centroidRotationMatrix, rotationArray
-				);
+						targetModelCenter, centroidRotationMatrix);
 
 				//------------------------------------------------------------------------------------------------------
 				//	Apply motion (preliminary)
@@ -573,11 +569,14 @@ class ICPAlgorithm2014 {
 
 	private void calcSingularValueComposition(Matrix3d rotationMatrix, Vector3d translationVector,
 											  Point3d baseDataCenter, Point3d targetModelCenter,
-											  GMatrix centroidRotationMatrix, double[][] rotationArray)
+											  GMatrix centroidRotationMatrix)
 	{
 		// use Jama, not javax.vecmath (buggy)
 		if (runVerbose)
 			System.out.println("  computing SUV");
+
+		// rotation matrix, as two-dim. array
+		double[][] rotationArray = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
 
 		// getRow(int row, double[] array) Places the values of the specified row into the array parameter.
 		centroidRotationMatrix.getRow(0, rotationArray[0]);
