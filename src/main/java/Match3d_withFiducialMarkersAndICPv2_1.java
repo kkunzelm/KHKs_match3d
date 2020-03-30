@@ -1089,6 +1089,8 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 		roiX = polyRoi.getXCoordinates();
 		roiY = polyRoi.getYCoordinates();
 
+		Polygon poly = polyRoi.getPolygon();
+
 		System.out.println("***************************************************");
 		System.out.println("PolygonRoi-Koordinaten: ");
 
@@ -1097,8 +1099,33 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 			vert.x = (float) fi.pixelWidth * (roiX[i] + rectRoiSource.x);
 			vert.y = (float) fi.pixelHeight * (roiY[i] + rectRoiSource.y);
 			vert.z = ip.getf((roiX[i] + rectRoiSource.x), (roiY[i] + rectRoiSource.y));
+
+			// compare pixels in 5x5 mask around the selected landmark
+				System.out.println("use_landmark_mask");
+				final int maskSizeX = 5;
+				final int maskSizeY = 5;
+				float[] zValuesinMask = new float[maskSizeX * maskSizeY];
+				int ctr = 0;
+				float mean = 0;
+				for (int j = -2; j <= 2; j++) {
+					for (int k = -2; k <= 2; k++) {
+						zValuesinMask[ctr++] = ip.getf(poly.xpoints[i] + j, poly.ypoints[i] + k);
+						mean += ip.getf(poly.xpoints[i] + j, poly.ypoints[i] + k);
+
+						// find pixel with highest z-value in mask and choose as new landmark
+						if (ip.getf(poly.xpoints[i] + j, poly.ypoints[i] + k)  > vert.z){
+							vert.x = poly.xpoints[i] + j;
+							vert.y = poly.ypoints[i] + k;
+							vert.z = ip.getf(poly.xpoints[i] + j, poly.ypoints[i] + k);
+						}
+
+						System.out.println("Poly: " + i + " X: " + poly.xpoints[i] + j + " Y: " + poly.ypoints[i] + k
+								+ " Z: "+ ip.getf(poly.xpoints[i] + j, poly.ypoints[i] + k));
+					}
+				}
+
 			vectorList.add(vert);
-			System.out.println(vert.x + "\t" + vert.y + "\t" + vert.z);
+//			System.out.println("New" + vert.x + "\t" + vert.y + "\t" + vert.z);
 		}
 		System.out.println("***************************************************");
 		return vectorList;
