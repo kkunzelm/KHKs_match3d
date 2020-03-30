@@ -705,7 +705,7 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn {
 
 		// initialization of ICP algorithm
 		icp.init(vectorArrayImg1, vectorArrayImg2, modelTree, modelCorner0, modelCorner1, rotMatrix, trans,
-				refineParameters);
+				refineParameters, centroidLandmarks1, centroidLandmarks2);
 
 		// return value from ICP
 		double[][] tMat = icp.runICP();

@@ -3,6 +3,9 @@ import Jama.SingularValueDecomposition;
 import datastruct.KDNode;
 import vecmath.*;
 
+import java.util.Arrays;
+import java.util.List;
+
 //todo Root Mean Square ... durchdenken.
 
 // datastruct.KDNode.java muss im gleichen Verzeichnis sein!
@@ -17,8 +20,8 @@ class ICPAlgorithm2014 {
 	private static final double ERROR_BOUND = 0.0001;
 	private static final double ERROR_DIFF = 0.00001; // 0.1% change
 
-	private Matrix3d manualRotation;
-	private Vector3d manualTranslation;
+	private Matrix3d landmarkRotation;
+	private Vector3d landmarkTranslation;
 	private Point3d[] targetModelPoints; // Target model
 	private Point3d[] baseDataPoints; // Base 3D model: is matched to target
 	private KDNode modelTree;
@@ -52,6 +55,9 @@ class ICPAlgorithm2014 {
 
 	boolean runVerbose = false;
 
+	Point3d landmarkCentroidTarget;
+	Point3d landmarkCentroidBase;
+
 
 	/** call this class like this:
 	 * ICPAlgorithm2012 instanceOfICP;
@@ -65,7 +71,8 @@ class ICPAlgorithm2014 {
 	}
 
 	public void init(Point3d[] m, Point3d[] d, KDNode mT, Point3d mC0, Point3d mC1, Matrix3d rotationAfterPrealignment,
-			Vector3d translationAfterPrealignment, ParameterICP refineParameters) {
+					 Vector3d translationAfterPrealignment, ParameterICP refineParameters,
+					 double[] landmarkCentroidTarget, double[] landmarkCentroidBase) {
 
 		// assign the important values
 		// 3D data
@@ -77,8 +84,11 @@ class ICPAlgorithm2014 {
 		modelCorner1 = mC1;
 
 		// results from landmark based prealignment
-		manualRotation = rotationAfterPrealignment;
-		manualTranslation = translationAfterPrealignment;
+		landmarkRotation = rotationAfterPrealignment;
+		landmarkTranslation = translationAfterPrealignment;
+
+		this.landmarkCentroidTarget = new Point3d(landmarkCentroidTarget[0], landmarkCentroidTarget[1], landmarkCentroidTarget[2]);
+		this.landmarkCentroidBase = new Point3d(landmarkCentroidBase[0], landmarkCentroidBase[1], landmarkCentroidBase[2]);
 
 		// diese Parameter könnte man in der Maske, in der die Bilder fürs Matching aufgerufen werden
 		// setzen/editierbar machen.
@@ -122,8 +132,8 @@ class ICPAlgorithm2014 {
 		if (runVerbose)	System.out.println("Calculating...");
 
 		// init rotation & translation matrices with results from landmark based prealignment
-		Matrix3d rotationMatrix = manualRotation;
-		Vector3d translationVector = manualTranslation;
+		Matrix3d rotationMatrix = landmarkRotation;
+		Vector3d translationVector = landmarkTranslation;
 
 		// KHK for debugging:
 		// rotationMatrix.setIdentity();
@@ -281,6 +291,27 @@ class ICPAlgorithm2014 {
 				iterationsFinished = true;
 			}
 		} // while(!finished) // finished, or aborted.
+
+
+		//------------------------------------------------------------------------------------------------------
+		//	Apply landmark transformation again for a-priori refinements
+		//------------------------------------------------------------------------------------------------------
+			//------------------------------------------------------------------------------------------------------
+			//	calculate centroids from landmarks
+			//------------------------------------------------------------------------------------------------------
+			centroidRotationMatrix = calcCentroidRotationMatrix(landmarkCentroidBase, landmarkCentroidTarget);
+
+			//------------------------------------------------------------------------------------------------------
+			//	calculate SVD singular value decomposition
+			//------------------------------------------------------------------------------------------------------
+			calcSingularValueComposition(rotationMatrix, translationVector, landmarkCentroidBase,
+					landmarkCentroidTarget, centroidRotationMatrix);
+
+			//------------------------------------------------------------------------------------------------------
+			//	Apply motion (preliminary)
+			//------------------------------------------------------------------------------------------------------
+			applySVDTransformation(rotationMatrix, translationVector);
+
 
 		//--------------------------------------------------------------------------------------------------------------
 		//	Return Transformation Matrix
