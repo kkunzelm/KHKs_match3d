@@ -126,269 +126,11 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
     ImagePlus impTransformedImageICP;
     ImagePlus ipOriginal;
 
-    /*
-     * Later to get homogeneous coordinates:
-     *
-     * R is extended to a 4 x 4 matrix (r.. stands for rotation element ..)
-     * r11 r12 r13 0 r21 r22 r23 0 R = r31 r32 r33 0 0 0 0 1
-	 *
-     * T is extended to a 4 x 1 matrix (t. stands for translation element .)
-     * t1 T = t2 t3 1
-     */
-
-    private static double bilinearInterpolation(ImagePlus imp, Matrix pointInvTransformed) {
-
-        double interpolatedPixelValue;
-
-        ImageProcessor ip = imp.getProcessor();
-        int w = ip.getWidth();
-        int h = ip.getHeight();
-
-        FileInfo fi = imp.getFileInfo();
-        double scalex = fi.pixelWidth;
-        double scaley = fi.pixelHeight;
-
-        double x = pointInvTransformed.get(0, 0) / scalex;
-        double y = pointInvTransformed.get(1, 0) / scaley;
-
-        // bilinear is 1, bicubic would be 2
-        ip.setInterpolationMethod(1);
-
-        // we have no meaningful data outside the image boundaries
-        if (x >= 0 && x < w && y >= 0 && y < h) {
-            interpolatedPixelValue = ip.getInterpolatedValue(x, y);
-        } else {
-            interpolatedPixelValue = 0;
-        }
-
-        return interpolatedPixelValue;
-
-    }
-
-    private static double bicubicInterpolation(ImagePlus imp, Matrix pointInvTransformed) {
-
-        double interpolatedPixelValue;
-
-        ImageProcessor ip = imp.getProcessor();
-        int w = ip.getWidth();
-        int h = ip.getHeight();
-
-        FileInfo fi = imp.getFileInfo();
-        double scalex = fi.pixelWidth;
-        double scaley = fi.pixelHeight;
-
-        double x = pointInvTransformed.get(0, 0) / scalex;
-        double y = pointInvTransformed.get(1, 0) / scaley;
-
-        // bilinear is 1, bicubic would be 2
-        ip.setInterpolationMethod(2);
-
-        // we have no meaningful data outside the image boundaries
-        if (x >= 0 && x < w && y >= 0 && y < h) {
-            interpolatedPixelValue = ip.getInterpolatedValue(x, y);
-        } else {
-            interpolatedPixelValue = 0;
-        }
-
-        return interpolatedPixelValue;
-
-    }
-
-    // File: CubicFloatProcessore.java needed!!
-    // Bob Dougherty 6/19/2008. Modified from FloatProcesor by Wayne Rasband.
-    // http://www.optinav.com/CubicFloatResizeRotate.htm
-    private static double bicubicInterpolationBobDoughertyStyle(ImagePlus imp, Matrix pointInvTransformed) {
-
-        double interpolatedPixelValue;
-
-        ImageProcessor ip = imp.getProcessor();
-
-        // bicubic interpolation developed by Bob Dougherty
-        CubicFloatProcessor cfp = new CubicFloatProcessor(ip.getFloatArray());
-
-        int w = ip.getWidth();
-        int h = ip.getHeight();
-
-        FileInfo fi = imp.getFileInfo();
-        double scalex = fi.pixelWidth;
-        double scaley = fi.pixelHeight;
-
-        double x = pointInvTransformed.get(0, 0) / scalex;
-        double y = pointInvTransformed.get(1, 0) / scaley;
-
-        // we have no meaningful data outside the image boundaries
-        if (x >= 0 && x < w && y >= 0 && y < h) {
-            interpolatedPixelValue = cfp.getInterpolatedPixel(x, y);
-        } else {
-            interpolatedPixelValue = 0;
-        }
-
-        return interpolatedPixelValue;
-
-    }
-
-    // KHK todo auslagern in utility class
-    public static ImageProcessor setZeroToNan(ImageProcessor ip) {
-
-        int width = ip.getWidth();
-        int height = ip.getHeight();
-        int length = width * height;
-
-        // define an array which referes to the pixels of the image
-
-        float[] arrayOfImagePixels = (float[]) ip.getPixels();
-
-        for (int a = 0; a < length; a++) {
-            if (arrayOfImagePixels[a] == 0.0) {
-                arrayOfImagePixels[a] = Float.NaN;
-            }
-        }
-        return ip;
-    }
-
-    public static Matrix getInverseTransformationMatrix(double[][] transformationMatrix, boolean printInfos) {
-
-        // KHK ich habe mit TransformJ kontrolliert: das Ergebnis sollte stimmen.
-        //
-        // die übliche Transformationsmatrix T
-        //
-        // (R t)
-        // ( ) p = t*R*p (erst R um Umsprung, dann t)
-        // (0 1)
-        //
-        // entspricht einer Kombination aus R und t:
-        // with R being a rotation and t being a translation is a combined transformation
-        // man muss die Rotation R und Translation t in der TransformationsMatrix T separat betrachten.
-        // aufgrund der Orthogonalität der Rotationsachsen gilt: R^T = R^-1
-        // d.h. wenn man die Rotationsmatrix transformiert, hat man die Inverse
-        // für die Translation t gilt: inv(t) = -t
-        // die Rotationsmatrixe kann man einfach invertieren
-        // ABER: für Koordinaten gilt: p' = Rp + t
-        // inverse Transformation zur Rückgewinnung von p:
-        // p' = Rp + t entspricht p'-t = Rp entspricht R^-1(p'-t) = R^-1*R*p
-        // entspricht wegen R^-1*R = I: p = R^-1(p'-t)
-        // in der homogenen TransformationsMatrix hat das die Form:
-        // (R t)^-1 (R^T -R^T*t)
-        // (0 1) gleich (0 1 )
-        //
-        // ^-1 = Inverse
-        // ^T = Transponierte
-
-        // nebenbei: es gilt immer... erst in Ursprung verschieben, dann rotieren, dann weiter translatieren
-        // t2*R*t1 ... bei Spaltenvektoren/Matrizen von rechts nach links abgearbeitet.
-        // ABER: die Umkehrung von Matrixverkettungen ist
-        // What is the inverse of a sequence of transformations?
-        // (M1M2...Mn)-­‐1 = Mn-­‐1Mn-­‐1-­‐1...M1-­‐1
-        // Inverse of a sequence of transformations is the composition of the inverses of each transformation in reverse
-		// order.
-        // What will our sequence look like?
-        // (T^‐1RT)^-1 = T^‐1R^‐1T
-        // We still translate to the origin first, then translate back at the end!
-
-        Matrix invTM = new Matrix(4, 4);
-        // R^T part (R transposed)
-        invTM.set(0, 0, transformationMatrix[0][0]);
-        invTM.set(0, 1, transformationMatrix[1][0]);
-        invTM.set(0, 2, transformationMatrix[2][0]);
-        invTM.set(1, 0, transformationMatrix[0][1]);
-        invTM.set(1, 1, transformationMatrix[1][1]);
-        invTM.set(1, 2, transformationMatrix[2][1]);
-        invTM.set(2, 0, transformationMatrix[0][2]);
-        invTM.set(2, 1, transformationMatrix[1][2]);
-        invTM.set(2, 2, transformationMatrix[2][2]);
-
-        // invariant part
-        invTM.set(3, 0, 0.0);
-        invTM.set(3, 1, 0.0);
-        invTM.set(3, 2, 0.0);
-        invTM.set(3, 3, 1.0);
-
-        // translation part -R^T*t
-        Matrix invRot = new Matrix(3, 3);
-        // R^T part (R transposed)
-        invRot.set(0, 0, transformationMatrix[0][0]);
-        invRot.set(0, 1, transformationMatrix[1][0]);
-        invRot.set(0, 2, transformationMatrix[2][0]);
-        invRot.set(1, 0, transformationMatrix[0][1]);
-        invRot.set(1, 1, transformationMatrix[1][1]);
-        invRot.set(1, 2, transformationMatrix[2][1]);
-        invRot.set(2, 0, transformationMatrix[0][2]);
-        invRot.set(2, 1, transformationMatrix[1][2]);
-        invRot.set(2, 2, transformationMatrix[2][2]);
-
-        Matrix transL = new Matrix(3, 1);
-        transL.set(0, 0, transformationMatrix[0][3]);
-        transL.set(1, 0, transformationMatrix[1][3]);
-        transL.set(2, 0, transformationMatrix[2][3]);
-
-        Matrix modTransL;
-        modTransL = invRot.times(transL);
-
-        invTM.set(0, 3, (-1 * modTransL.get(0, 0)));
-        invTM.set(1, 3, (-1 * modTransL.get(1, 0)));
-        invTM.set(2, 3, (-1 * modTransL.get(2, 0)));
-
-        // Kontrolle: invTM*T = T*invTM = I;
-        Matrix transformation = new Matrix(transformationMatrix);
-        Matrix identity = invTM.times(transformation);
-
-        if (printInfos) {
-            System.out.println("*************************************************");
-            System.out.println("* Kontrolle von getInverseTransformationMatrix:");
-            System.out.println("* ");
-            System.out.println("* OriginalTransformationsMatrix: ");
-            System.out.println("* ");
-            System.out.println(transformationMatrix[0][0] + "\t" + transformationMatrix[0][1] + "\t"
-                    + transformationMatrix[0][2] + "\t" + transformationMatrix[0][3]);
-            System.out.println(transformationMatrix[1][0] + "\t" + transformationMatrix[1][1] + "\t"
-                    + transformationMatrix[1][2] + "\t" + transformationMatrix[1][3]);
-            System.out.println(transformationMatrix[2][0] + "\t" + transformationMatrix[2][1] + "\t"
-                    + transformationMatrix[2][2] + "\t" + transformationMatrix[2][3]);
-            System.out.println(transformationMatrix[3][0] + "\t" + transformationMatrix[3][1] + "\t"
-                    + transformationMatrix[3][2] + "\t" + transformationMatrix[3][3]);
-            System.out.println("* ");
-            System.out.println("* inverse Rotationsmatrix: ");
-            System.out.println("* ");
-            System.out.println(invRot.get(0, 0) + "\t" + invRot.get(0, 1) + "\t" + invRot.get(0, 2));
-            System.out.println(invRot.get(1, 0) + "\t" + invRot.get(1, 1) + "\t" + invRot.get(1, 2));
-            System.out.println(invRot.get(2, 0) + "\t" + invRot.get(2, 1) + "\t" + invRot.get(2, 2));
-            System.out.println("* ");
-            System.out.println("* Translation");
-            System.out.println("* ");
-            System.out.println(transL.get(0, 0) + "\t" + transL.get(1, 0) + "\t" + transL.get(2, 0));
-            System.out.println("* ");
-            System.out.println("* -R^T * Translation");
-            System.out.println("* ");
-            System.out.println(
-                    (-1 * modTransL.get(0, 0)) + "\t" + (-1 * modTransL.get(1, 0)) + "\t" + (-1 * modTransL.get(2, 0)));
-            System.out.println("* ");
-            System.out.println("* inverse TransformationsMatrix: ");
-            System.out.println("* ");
-            System.out.println(
-                    invTM.get(0, 0) + "\t" + invTM.get(0, 1) + "\t" + invTM.get(0, 2) + "\t" + invTM.get(0, 3));
-            System.out.println(
-                    invTM.get(1, 0) + "\t" + invTM.get(1, 1) + "\t" + invTM.get(1, 2) + "\t" + invTM.get(1, 3));
-            System.out.println(
-                    invTM.get(2, 0) + "\t" + invTM.get(2, 1) + "\t" + invTM.get(2, 2) + "\t" + invTM.get(2, 3));
-            System.out.println(
-                    invTM.get(3, 0) + "\t" + invTM.get(3, 1) + "\t" + invTM.get(3, 2) + "\t" + invTM.get(3, 3));
-            System.out.println("* ");
-            System.out.println("* Identiy ??: ");
-            System.out.println(identity.get(0, 0) + "\t" + identity.get(0, 1) + "\t" + identity.get(0, 2) + "\t"
-                    + identity.get(0, 3));
-            System.out.println(identity.get(1, 0) + "\t" + identity.get(1, 1) + "\t" + identity.get(1, 2) + "\t"
-                    + identity.get(1, 3));
-            System.out.println(identity.get(2, 0) + "\t" + identity.get(2, 1) + "\t" + identity.get(2, 2) + "\t"
-                    + identity.get(2, 3));
-            System.out.println(identity.get(3, 0) + "\t" + identity.get(3, 1) + "\t" + identity.get(3, 2) + "\t"
-                    + identity.get(3, 3));
-            System.out.println("* ");
-            System.out.println("*************************************************");
-
-        }
-
-        return invTM;
-    }
+    /*##################################################################################################################
+	*
+	* 												MAIN METHOD
+	*
+	##################################################################################################################*/
 
     public void run(String arg) {
 
@@ -636,15 +378,7 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
             System.out.println("  " + z1);
         }
 
-        // measure the time to build the kd-tree
-
-        // long startTime = System.currentTimeMillis();
-
         modelTree.build(0, vectorArrayImg1.length - 1, x0, x1, y0, y1, z0, z1);
-
-        // long stopTime = System.currentTimeMillis();
-        // long elapsedTime = stopTime - startTime;
-        // System.out.println("Time for kd-Tree building: " + elapsedTime + "ms");
 
         Point3d modelCorner0 = new Point3d(x0, y0, z0);
         Point3d modelCorner1 = new Point3d(x1, y1, z1);
@@ -681,211 +415,11 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         // hack0.khkDisplayXYZ(vectorListImg2);
     }
 
-    private void showDiffSlider(double min, double max, double defaultValue) {
-        NonBlockingGenericDialog gd = new NonBlockingGenericDialog("KHKs Match3D - Histogram");
-        gd.addSlider("Diff Slider", min, max, defaultValue, 0.1);
-        gd.addDialogListener(this);
-
-        gd.showDialog();
-    }
-
-    /**
-     * Listener to modifications of the input fields of the dialog.
-     * Here the parameters should be read from the input dialog.
-     *
-     * @param gd The GenericDialog that the input belongs to
-     * @param e  The input event
-     * @return whether the input is valid and the filter may be run with these parameters
-     */
-    @Override
-    public boolean dialogItemChanged(GenericDialog gd, AWTEvent e) {
-        double percentage = gd.getNextNumber();
-        System.out.println(percentage);
-        ImagePlus ip = WindowManager.getImage("TransformedPostICP");
-
-        ImageProcessor ipTransformedImage = ip.getProcessor();
-        ImageProcessor ipTransformedImageOriginal = ipOriginal.getProcessor();
-
-        for (int i = 0; i < ipTransformedImage.getHeight(); i++) {
-            for (int j = 0; j < ipTransformedImage.getWidth(); j++) {
-                ipTransformedImage.setf(j, i, (float) (ipTransformedImageOriginal.getf(j, i) - percentage));
-            }
-        }
-        ip.updateAndRepaintWindow();
-        return !gd.invalidNumber();
-    }
-
-    /**
-     * Show plugin configuration dialog.
-     *
-     * @return <code>true</code> when user clicked OK (confirmed changes,
-     * <code>false</code> otherwise.
-     */
-
-    // KHK todo: I need a lot of class variables ---- try to encapsulate better!
-    private boolean showDialog() {
-
-        GenericDialog gd = new GenericDialog("KHKs jMatch3D", IJ.getInstance());
-
-        gd.addMessage(
-                "Two images of file type '32bit' or 'float' are required. \n" +
-						"x and y are coordinates on a rectangular grid, \n" +
-						"z represents the height information z = f(x,y).");
-
-        String defaultItem;
-        if (title1.equals(""))
-            defaultItem = titles[0];
-        else
-            defaultItem = title1;
-        gd.addChoice("Image1 (source):", titles, defaultItem);
-
-        if (title2.equals(""))
-            defaultItem = titles[1];
-        else
-            defaultItem = title2;
-        gd.addChoice("Image2 (target):", titles, defaultItem);
-
-        gd.addMessage("");
-
-        gd.addChoice("ICP Point Selection Method: ", schemes, schemes[scheme]);
-
-        gd.addMessage("refine_clamp:  removes points further away than the multiple of mean or median distance.\n"
-                + "               The smaller of the two values, mean or median, is used for this condition!\n"
-                + "refine_sd:     removes points further away then multiple of std dev distance.\n"
-                + "refine_clip:   removes percentage of points with highest distance.\n"
-                + "refine_sparse: removes percentage of all points\n"
-                + "refine_unique: all nearest points (very slow)");
-        gd.addMessage("");
-
-        // refine_clamp = kill all points farther away than a multiple of the last reported mean distance and a multiple
-		// of the current median distance
-        // refine_clip = kill percentage of points with highest distance
-        // (approximated value from non-transformed distance values)
-        // refine_sparse = kill a certain percentage of points.
-        // refine_unique = all nearest points (very slow).
-        gd.addMessage("Parameters: ");
-        gd.addNumericField("refine_clamp: multiple of mean/med error: ", refine_clamp_par, 2);
-        gd.addNumericField("refine_sd: multiple of sd: ", refine_sd_par, 2);
-        gd.addNumericField("refine_clip: percentage (0.0 - 1.0): ", refine_clip_par, 2);
-        gd.addNumericField("refine_sparce: percentage (0.0 - 1.0): ", refine_sparse_par, 2);
-        gd.addNumericField("minimum valid points: ", minimum_valid_points, 0);
-        gd.addCheckbox("a-priori landmarks: ", refine_a_priori_landmark);
-        gd.addCheckbox("a-priori diff slider: ", refine_a_priori_diff_slider);
-        gd.addCheckbox("use Landmark mask: ", use_landmark_mask);
-        gd.addMessage("");
-
-        gd.addCheckbox("Check to save resulting matrix: ", saveMatrixFileFlag);
-        gd.addMessage("");
-        gd.addChoice("Interpolation Method (Difference Image): ", interpolationMethod, interpolationMethod[interpol]);
-        gd.addMessage("");
-
-        // KHK todo... load matrix hat noch Fehler... Abfragen ergänzen
-        // KHK todo... set working directory ergänzen
-
-        gd.addStringField("Matrix file:", file, 30);
-
-        gd.addMessage("");
-        gd.addMessage("Developed by Karl-Heinz Kunzelmann.\nBased on plenty of code from the Internet\n");
-
-        gd.showDialog();
-
-        if (gd.wasCanceled())
-            return false;
-
-        int index1 = gd.getNextChoiceIndex();
-        title1 = titles[index1];
-
-        int index2 = gd.getNextChoiceIndex();
-        title2 = titles[index2];
-
-        imp1 = WindowManager.getImage(wList[index1]);
-        imp2 = WindowManager.getImage(wList[index2]);
-
-        // parameters to initialize the icp algorithm
-
-        scheme = gd.getNextChoiceIndex();
-
-        refine_clamp_par = gd.getNextNumber();
-        refine_sd_par = gd.getNextNumber();
-        refine_clip_par = gd.getNextNumber();
-        refine_sparse_par = gd.getNextNumber();
-        minimum_valid_points = (int) gd.getNextNumber();
-        refine_a_priori_landmark = gd.getNextBoolean();
-        refine_a_priori_diff_slider = gd.getNextBoolean();
-        use_landmark_mask = gd.getNextBoolean();
-        saveMatrixFileFlag = gd.getNextBoolean();
-
-        interpol = gd.getNextChoiceIndex();
-
-        file = gd.getNextString();
-
-        if (file == null || !file.equals("")) {
-            loadMatrixFileFlag = true;
-            transformationMatrix = (new ReadMatrix()).run(file);
-        }
-
-        if (index1 == index2) {
-            IJ.error("Information:\n\nImage 1 and 2 are identical. Will continue. \nBut take care with the result!");
-        }
-        // plausibility check
-        if (refine_clip_par < 0.0 || refine_clip_par > 1.0) {
-            refine_clip_par = 0.90; // default
-        }
-
-        if (refine_sparse_par < 0.0 || refine_sparse_par > 1.0) {
-            refine_sparse_par = 0.5;
-        }
-
-        if (minimum_valid_points < 3) {
-            minimum_valid_points = 3;
-        }
-
-        switch (scheme) {
-            case 0:
-                refine_clamp = true;
-                refine_sd = false;
-                refine_clip = false;
-                refine_sparse = false;
-                refine_unique = false;
-                break;
-            case 1:
-                refine_clamp = false;
-                refine_sd = true;
-                refine_clip = false;
-                refine_sparse = false;
-                refine_unique = false;
-                break;
-            case 2:
-                refine_clamp = false;
-                refine_sd = false;
-                refine_clip = true;
-                refine_sparse = false;
-                refine_unique = false;
-                break;
-            case 3:
-                refine_clamp = false;
-                refine_sd = false;
-                refine_clip = false;
-                refine_sparse = true;
-                refine_unique = false;
-                break;
-            case 4:
-                refine_clamp = false;
-                refine_sd = false;
-                refine_clip = false;
-                refine_sparse = false;
-                refine_unique = true;
-                break;
-        }
-
-        refineParameters = new ParameterICP(refine_clamp, refine_clamp_par, refine_sd, refine_sd_par, refine_clip,
-                refine_clip_par, refine_sparse, refine_sparse_par, refine_unique, minimum_valid_points,
-                refine_a_priori_landmark, refine_a_priori_diff_slider, use_landmark_mask);
-        System.out.println(refineParameters.toString());
-
-        return true;
-
-    }
+	/*##################################################################################################################
+	*
+	* 												LANDMARKS
+	*
+	##################################################################################################################*/
 
     private Point3d[] getCorrespondingPointListFromImageDataAsArray(ImagePlus imp) {
 
@@ -906,32 +440,17 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         for (int i = 0; i < ip.getHeight(); i++) {
             for (int j = 0; j < ip.getWidth(); j++) {
 
-                // vectorArray[ip.getWidth()*i+j].z = ip.getf(j,i);
-                // vectorArray[ip.getWidth()*i+j].x = j*fi.pixelWidth;
-                // vectorArray[ip.getWidth()*i+j].y = i*fi.pixelHeight;
                 if (ip.getf(j, i) != 0.0) {
-
                     vectorArray[count].z = ip.getf(j, i);
                     vectorArray[count].x = j * fi.pixelWidth;
                     vectorArray[count].y = i * fi.pixelHeight;
                     count = count + 1;
-
                 }
 
                 if (Float.isNaN(ip.getf(j, i))) {
                     count = count - 1;
                 }
-
-                /*
-                 * if (i % 20 == 0 && j % 20 == 0){ System.out.println("i: " + i + " j: " + j +
-                 * " z-Wert: " + ip.getf(j,i)+ " i*Breite+j: " + (ip.getWidth()*i+j) +
-                 * " count: " + count); }
-                 */
-
-                // System.out.println(" x,y und Pos: "+j + ", " + i + "und" + (ip.getWidth()*i+j));
-                // System.out.println(" i*ip.getHeight()+j"+ (i*ip.getHeight()+j));
             }
-            // System.out.println("i: "+i);
         }
 
         /*
@@ -989,16 +508,13 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         int roiLength = polyRoi.getNCoordinates();
 
         // later I need the absolute coordinates.
-        // the method getXCoordinates or getYcoordinates
-        // returns relative coordinates, relative to the bouncing box of the ROI.
+        // the method getXCoordinates or getYcoordinates returns relative coordinates,
+		// relative to the bouncing box of the ROI.
 
         // Rectangle is the bouncing box
         Rectangle rectRoiSource = ip.getRoi();
 
-        // Source Image:
-        // Creating array for SVD
-        //
-
+        // Source Image: Creating array for SVD
         roiX = polyRoi.getXCoordinates();
         roiY = polyRoi.getYCoordinates();
 
@@ -1018,13 +534,12 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
                 System.out.println("use_landmark_mask");
                 final int maskSizeX = 5;
                 final int maskSizeY = 5;
-//				float[] zValuesinMask = new float[maskSizeX * maskSizeY];
+
                 int ctr = 0;
                 float mean = 0;
 
                 for (int j = -2; j <= 2; j++) {
                     for (int k = -2; k <= 2; k++) {
-//						zValuesinMask[ctr++] = ip.getf(poly.xpoints[i] + j, poly.ypoints[i] + k);
                         mean += ip.getf(poly.xpoints[i] + j, poly.ypoints[i] + k);
 
                         // find pixel with highest z-value in mask and choose as new landmark
@@ -1046,6 +561,37 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         System.out.println("***************************************************");
         return vectorList;
     }
+
+	private double[] computeCentroid(List<Vector3d> mesh) {
+		double x = 0, y = 0, z = 0;
+
+		for (Vector3d p : mesh) {
+			x = x + p.getX();
+			y = y + p.getY();
+			z = z + p.getZ();
+		}
+
+		x = x / mesh.size();
+		y = y / mesh.size();
+		z = z / mesh.size();
+
+		return new double[]{x, y, z};
+	}
+
+	private List<Vector3d> relativeCord(List<Vector3d> mesh, double[] centroid) {
+		List<Vector3d> relative = new ArrayList<>();
+		double x, y, z;
+
+		for (Vector3d p : mesh) {
+			x = p.getX() - centroid[0];
+			y = p.getY() - centroid[1];
+			z = p.getZ() - centroid[2];
+
+			relative.add(new Vector3d(x, y, z));
+		}
+
+		return relative;
+	}
 
     /**
      * Accumulates the Correlation Matrix K which is needed for Singular Value
@@ -1098,11 +644,7 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
                     for (int k = 0; k < 3; k++) {
-                        // System.out.println("ijk: "+i+"/"+j+"/"+k+" -> Matrixelement ik before "+
-                        // correlationMatrixK[i][k]);
                         correlationMatrixK_temp[i][k] += modelPoint[i][j] * dataPoint[j][k];
-                        // System.out.println("ijk: "+i+"/"+j+"/"+k+" -> Matrixelement ik after "+
-                        // correlationMatrixK[i][k]);
                     }
                 }
             }
@@ -1174,20 +716,10 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         System.out.print("V = ");
         Matrix V = s.getV();
 
-        // "det(VU^T)" will be calculated
-
-        // s.getU().transpose();
-        // s.getV().times(s.getU().transpose());
-        // s.getV().times(s.getU().transpose()).det(); // this is "det(VU^T)"
-
         System.out.println("det(VU^T): " + s.getV().times(s.getU().transpose()).det());
 
         Matrix intermedResult = new Matrix(
                 new double[][]{{1, 0, 0}, {0, 1, 0}, {0, 0, s.getV().times(s.getU().transpose()).det()}});
-
-        // s.getU().times(intermedResult1); // is matrix C as above mentioned
-        // s.getV().transpose(); // is matrix V^T
-        // s.getU().times(intermedResult1).times(s.getV().transpose()); // is R
 
         return s.getU().times(intermedResult).times(s.getV().transpose());
 
@@ -1233,10 +765,6 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 
         System.out.println("Centroid1: " + centroid1[0] + " " + centroid1[1] + " " + centroid1[2]);
         System.out.println("Centroid2: " + centroid2[0] + " " + centroid2[1] + " " + centroid2[2]);
-        // System.out.println("diff Centroids: " + (centroid2[0]-centroid1[0]) + " " +
-        // (centroid2[1]-centroid1[1]) + " " + (centroid2[2]-centroid1[2]));
-        // System.out.println("rotCentroid2: " + rotCentroid2[0] + " " + rotCentroid2[1]
-        // + " " + rotCentroid2[2]);
         System.out.println("Translation: " + translation[0] + ", " + translation[1] + ", " + translation[2]);
 
         return translation;
@@ -1273,30 +801,11 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         return transformationMatrix;
     }
 
-    private ImagePlus makeTarget(ImagePlus imp1) {
-        // ip1 = baseline image which will not be transformed but we use it as a template for the transformed image.
-
-        // I need a blank image to get the rotated img1 as we want to subtract it later from the basline image (= img1)
-        // the size and pixelDimensions are identical with img1
-        this.ip1 = imp1.getProcessor();
-
-        int w = this.ip1.getWidth();
-        int h = this.ip1.getHeight();
-
-        // debugging:
-
-        System.out.println("2014 Dimensions Image1 w x t: " + w + " x " + h);
-
-        // Syntax: NewImage.createFloatImage(java.lang.String title, int width, int height, int slices, int options)
-        ImagePlus impTransformedImage = NewImage.createFloatImage("Result-rotatedImg1", w, h, 1, NewImage.FILL_BLACK);
-
-        // need to apply the unit scale to the new image
-
-        impTransformedImage.copyScale(imp1);
-
-        return impTransformedImage;
-
-    }
+    /*##################################################################################################################
+	*
+	* 											3D TRANSFORMATION
+	*
+	##################################################################################################################*/
 
     /**
      * DESCRIPTION: Takes two input datasets and the location parameters as a transformation matrix in homogeneous
@@ -1419,8 +928,6 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         ipTransformedImage.setMinAndMax(min, max);
         differenceImage.updateAndDraw();
         differenceImage.show();
-        // System.out.println ("TransformationMatrix: "+
-        // Arrays.deepToString(transformationMatrix));
 
         if (refine_a_priori_diff_slider) {
             mean = mean / ctr;
@@ -1453,29 +960,251 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
             ipOriginal = impTransformedImageICP.duplicate();
             showDiffSlider(minDiff, maxDiff, hi);
         }
-
-//		int bins = 255;
-//		float binSize = (Math.abs(minDiff) + Math.abs(maxDiff)) / bins;
-//		System.out.println(binSize + "= binSize");
-//		ArrayList<Float>[] hist = new ArrayList[bins];
-//		for (int i = 0; i < bins; i++) {
-//			hist[i] = new ArrayList<Float>();
-//		}
-//
-//		int binCtr = 1;
-//		for (int i = 0; i < differences.length; i++) {
-//			if(differences[i] <= binCtr * binSize + minDiff && binCtr < bins) {
-//				hist[binCtr-1].add(differences[i]);
-//			} else {
-//				binCtr++;
-//			}
-//		}
-//
-//		for (int i = 0; i < hist.length; i++) {
-//			System.out.println(hist[i].toString());
-//		}
-
     }
+
+	public static Matrix getInverseTransformationMatrix(double[][] transformationMatrix, boolean printInfos) {
+		/*
+		 * Later to get homogeneous coordinates:
+		 *
+		 * R is extended to a 4 x 4 matrix (r.. stands for rotation element ..)
+		 * r11 r12 r13 0 r21 r22 r23 0 R = r31 r32 r33 0 0 0 0 1
+		 *
+		 * T is extended to a 4 x 1 matrix (t. stands for translation element .)
+		 * t1 T = t2 t3 1
+		 */
+
+		// KHK ich habe mit TransformJ kontrolliert: das Ergebnis sollte stimmen.
+		//
+		// die übliche Transformationsmatrix T
+		//
+		// (R t)
+		// ( ) p = t*R*p (erst R um Umsprung, dann t)
+		// (0 1)
+		//
+		// entspricht einer Kombination aus R und t:
+		// with R being a rotation and t being a translation is a combined transformation
+		// man muss die Rotation R und Translation t in der TransformationsMatrix T separat betrachten.
+		// aufgrund der Orthogonalität der Rotationsachsen gilt: R^T = R^-1
+		// d.h. wenn man die Rotationsmatrix transformiert, hat man die Inverse
+		// für die Translation t gilt: inv(t) = -t
+		// die Rotationsmatrixe kann man einfach invertieren
+		// ABER: für Koordinaten gilt: p' = Rp + t
+		// inverse Transformation zur Rückgewinnung von p:
+		// p' = Rp + t entspricht p'-t = Rp entspricht R^-1(p'-t) = R^-1*R*p
+		// entspricht wegen R^-1*R = I: p = R^-1(p'-t)
+		// in der homogenen TransformationsMatrix hat das die Form:
+		// (R t)^-1 (R^T -R^T*t)
+		// (0 1) gleich (0 1 )
+		//
+		// ^-1 = Inverse
+		// ^T = Transponierte
+
+		// nebenbei: es gilt immer... erst in Ursprung verschieben, dann rotieren, dann weiter translatieren
+		// t2*R*t1 ... bei Spaltenvektoren/Matrizen von rechts nach links abgearbeitet.
+		// ABER: die Umkehrung von Matrixverkettungen ist
+		// What is the inverse of a sequence of transformations?
+		// (M1M2...Mn)-­‐1 = Mn-­‐1Mn-­‐1-­‐1...M1-­‐1
+		// Inverse of a sequence of transformations is the composition of the inverses of each transformation in reverse
+		// order.
+		// What will our sequence look like?
+		// (T^‐1RT)^-1 = T^‐1R^‐1T
+		// We still translate to the origin first, then translate back at the end!
+
+		Matrix invTM = new Matrix(4, 4);
+		// R^T part (R transposed)
+		invTM.set(0, 0, transformationMatrix[0][0]);
+		invTM.set(0, 1, transformationMatrix[1][0]);
+		invTM.set(0, 2, transformationMatrix[2][0]);
+		invTM.set(1, 0, transformationMatrix[0][1]);
+		invTM.set(1, 1, transformationMatrix[1][1]);
+		invTM.set(1, 2, transformationMatrix[2][1]);
+		invTM.set(2, 0, transformationMatrix[0][2]);
+		invTM.set(2, 1, transformationMatrix[1][2]);
+		invTM.set(2, 2, transformationMatrix[2][2]);
+
+		// invariant part
+		invTM.set(3, 0, 0.0);
+		invTM.set(3, 1, 0.0);
+		invTM.set(3, 2, 0.0);
+		invTM.set(3, 3, 1.0);
+
+		// translation part -R^T*t
+		Matrix invRot = new Matrix(3, 3);
+		// R^T part (R transposed)
+		invRot.set(0, 0, transformationMatrix[0][0]);
+		invRot.set(0, 1, transformationMatrix[1][0]);
+		invRot.set(0, 2, transformationMatrix[2][0]);
+		invRot.set(1, 0, transformationMatrix[0][1]);
+		invRot.set(1, 1, transformationMatrix[1][1]);
+		invRot.set(1, 2, transformationMatrix[2][1]);
+		invRot.set(2, 0, transformationMatrix[0][2]);
+		invRot.set(2, 1, transformationMatrix[1][2]);
+		invRot.set(2, 2, transformationMatrix[2][2]);
+
+		Matrix transL = new Matrix(3, 1);
+		transL.set(0, 0, transformationMatrix[0][3]);
+		transL.set(1, 0, transformationMatrix[1][3]);
+		transL.set(2, 0, transformationMatrix[2][3]);
+
+		Matrix modTransL;
+		modTransL = invRot.times(transL);
+
+		invTM.set(0, 3, (-1 * modTransL.get(0, 0)));
+		invTM.set(1, 3, (-1 * modTransL.get(1, 0)));
+		invTM.set(2, 3, (-1 * modTransL.get(2, 0)));
+
+		// Kontrolle: invTM*T = T*invTM = I;
+		Matrix transformation = new Matrix(transformationMatrix);
+		Matrix identity = invTM.times(transformation);
+
+		if (printInfos) {
+			System.out.println("*************************************************");
+			System.out.println("* Kontrolle von getInverseTransformationMatrix:");
+			System.out.println("* ");
+			System.out.println("* OriginalTransformationsMatrix: ");
+			System.out.println("* ");
+			System.out.println(transformationMatrix[0][0] + "\t" + transformationMatrix[0][1] + "\t"
+					+ transformationMatrix[0][2] + "\t" + transformationMatrix[0][3]);
+			System.out.println(transformationMatrix[1][0] + "\t" + transformationMatrix[1][1] + "\t"
+					+ transformationMatrix[1][2] + "\t" + transformationMatrix[1][3]);
+			System.out.println(transformationMatrix[2][0] + "\t" + transformationMatrix[2][1] + "\t"
+					+ transformationMatrix[2][2] + "\t" + transformationMatrix[2][3]);
+			System.out.println(transformationMatrix[3][0] + "\t" + transformationMatrix[3][1] + "\t"
+					+ transformationMatrix[3][2] + "\t" + transformationMatrix[3][3]);
+			System.out.println("* ");
+			System.out.println("* inverse Rotationsmatrix: ");
+			System.out.println("* ");
+			System.out.println(invRot.get(0, 0) + "\t" + invRot.get(0, 1) + "\t" + invRot.get(0, 2));
+			System.out.println(invRot.get(1, 0) + "\t" + invRot.get(1, 1) + "\t" + invRot.get(1, 2));
+			System.out.println(invRot.get(2, 0) + "\t" + invRot.get(2, 1) + "\t" + invRot.get(2, 2));
+			System.out.println("* ");
+			System.out.println("* Translation");
+			System.out.println("* ");
+			System.out.println(transL.get(0, 0) + "\t" + transL.get(1, 0) + "\t" + transL.get(2, 0));
+			System.out.println("* ");
+			System.out.println("* -R^T * Translation");
+			System.out.println("* ");
+			System.out.println(
+					(-1 * modTransL.get(0, 0)) + "\t" + (-1 * modTransL.get(1, 0)) + "\t" + (-1 * modTransL.get(2, 0)));
+			System.out.println("* ");
+			System.out.println("* inverse TransformationsMatrix: ");
+			System.out.println("* ");
+			System.out.println(
+					invTM.get(0, 0) + "\t" + invTM.get(0, 1) + "\t" + invTM.get(0, 2) + "\t" + invTM.get(0, 3));
+			System.out.println(
+					invTM.get(1, 0) + "\t" + invTM.get(1, 1) + "\t" + invTM.get(1, 2) + "\t" + invTM.get(1, 3));
+			System.out.println(
+					invTM.get(2, 0) + "\t" + invTM.get(2, 1) + "\t" + invTM.get(2, 2) + "\t" + invTM.get(2, 3));
+			System.out.println(
+					invTM.get(3, 0) + "\t" + invTM.get(3, 1) + "\t" + invTM.get(3, 2) + "\t" + invTM.get(3, 3));
+			System.out.println("* ");
+			System.out.println("* Identiy ??: ");
+			System.out.println(identity.get(0, 0) + "\t" + identity.get(0, 1) + "\t" + identity.get(0, 2) + "\t"
+					+ identity.get(0, 3));
+			System.out.println(identity.get(1, 0) + "\t" + identity.get(1, 1) + "\t" + identity.get(1, 2) + "\t"
+					+ identity.get(1, 3));
+			System.out.println(identity.get(2, 0) + "\t" + identity.get(2, 1) + "\t" + identity.get(2, 2) + "\t"
+					+ identity.get(2, 3));
+			System.out.println(identity.get(3, 0) + "\t" + identity.get(3, 1) + "\t" + identity.get(3, 2) + "\t"
+					+ identity.get(3, 3));
+			System.out.println("* ");
+			System.out.println("*************************************************");
+
+		}
+
+		return invTM;
+	}
+
+	private static double bilinearInterpolation(ImagePlus imp, Matrix pointInvTransformed) {
+
+		double interpolatedPixelValue;
+
+		ImageProcessor ip = imp.getProcessor();
+		int w = ip.getWidth();
+		int h = ip.getHeight();
+
+		FileInfo fi = imp.getFileInfo();
+		double scalex = fi.pixelWidth;
+		double scaley = fi.pixelHeight;
+
+		double x = pointInvTransformed.get(0, 0) / scalex;
+		double y = pointInvTransformed.get(1, 0) / scaley;
+
+		// bilinear is 1, bicubic would be 2
+		ip.setInterpolationMethod(1);
+
+		// we have no meaningful data outside the image boundaries
+		if (x >= 0 && x < w && y >= 0 && y < h) {
+			interpolatedPixelValue = ip.getInterpolatedValue(x, y);
+		} else {
+			interpolatedPixelValue = 0;
+		}
+
+		return interpolatedPixelValue;
+
+	}
+
+	private static double bicubicInterpolation(ImagePlus imp, Matrix pointInvTransformed) {
+
+		double interpolatedPixelValue;
+
+		ImageProcessor ip = imp.getProcessor();
+		int w = ip.getWidth();
+		int h = ip.getHeight();
+
+		FileInfo fi = imp.getFileInfo();
+		double scalex = fi.pixelWidth;
+		double scaley = fi.pixelHeight;
+
+		double x = pointInvTransformed.get(0, 0) / scalex;
+		double y = pointInvTransformed.get(1, 0) / scaley;
+
+		// bilinear is 1, bicubic would be 2
+		ip.setInterpolationMethod(2);
+
+		// we have no meaningful data outside the image boundaries
+		if (x >= 0 && x < w && y >= 0 && y < h) {
+			interpolatedPixelValue = ip.getInterpolatedValue(x, y);
+		} else {
+			interpolatedPixelValue = 0;
+		}
+
+		return interpolatedPixelValue;
+
+	}
+
+	private static double bicubicInterpolationBobDoughertyStyle(ImagePlus imp, Matrix pointInvTransformed) {
+		// File: CubicFloatProcessore.java needed!!
+		// Bob Dougherty 6/19/2008. Modified from FloatProcesor by Wayne Rasband.
+		// http://www.optinav.com/CubicFloatResizeRotate.htm
+
+		double interpolatedPixelValue;
+
+		ImageProcessor ip = imp.getProcessor();
+
+		// bicubic interpolation developed by Bob Dougherty
+		CubicFloatProcessor cfp = new CubicFloatProcessor(ip.getFloatArray());
+
+		int w = ip.getWidth();
+		int h = ip.getHeight();
+
+		FileInfo fi = imp.getFileInfo();
+		double scalex = fi.pixelWidth;
+		double scaley = fi.pixelHeight;
+
+		double x = pointInvTransformed.get(0, 0) / scalex;
+		double y = pointInvTransformed.get(1, 0) / scaley;
+
+		// we have no meaningful data outside the image boundaries
+		if (x >= 0 && x < w && y >= 0 && y < h) {
+			interpolatedPixelValue = cfp.getInterpolatedPixel(x, y);
+		} else {
+			interpolatedPixelValue = 0;
+		}
+
+		return interpolatedPixelValue;
+
+	}
 
     private double nearestNeighborInterpolation(ImagePlus imp2, Matrix pointInvTransformed) {
 
@@ -1505,36 +1234,266 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 
     }
 
-    private double[] computeCentroid(List<Vector3d> mesh) {
-        double x = 0, y = 0, z = 0;
+    /*##################################################################################################################
+	*
+	* 												DIALOGS
+	*
+	##################################################################################################################*/
 
-        for (Vector3d p : mesh) {
-            x = x + p.getX();
-            y = y + p.getY();
-            z = z + p.getZ();
-        }
+	/**
+	 * Show plugin configuration dialog.
+	 *
+	 * @return <code>true</code> when user clicked OK (confirmed changes,
+	 * <code>false</code> otherwise.
+	 */
 
-        x = x / mesh.size();
-        y = y / mesh.size();
-        z = z / mesh.size();
+	// KHK todo: I need a lot of class variables ---- try to encapsulate better!
+	private boolean showDialog() {
 
-        return new double[]{x, y, z};
-    }
+		GenericDialog gd = new GenericDialog("KHKs jMatch3D", IJ.getInstance());
 
-    private List<Vector3d> relativeCord(List<Vector3d> mesh, double[] centroid) {
-        List<Vector3d> relative = new ArrayList<>();
-        double x, y, z;
+		gd.addMessage(
+				"Two images of file type '32bit' or 'float' are required. \n" +
+						"x and y are coordinates on a rectangular grid, \n" +
+						"z represents the height information z = f(x,y).");
 
-        for (Vector3d p : mesh) {
-            x = p.getX() - centroid[0];
-            y = p.getY() - centroid[1];
-            z = p.getZ() - centroid[2];
+		String defaultItem;
+		if (title1.equals(""))
+			defaultItem = titles[0];
+		else
+			defaultItem = title1;
+		gd.addChoice("Image1 (source):", titles, defaultItem);
 
-            relative.add(new Vector3d(x, y, z));
-        }
+		if (title2.equals(""))
+			defaultItem = titles[1];
+		else
+			defaultItem = title2;
+		gd.addChoice("Image2 (target):", titles, defaultItem);
 
-        return relative;
-    }
+		gd.addMessage("");
+
+		gd.addChoice("ICP Point Selection Method: ", schemes, schemes[scheme]);
+
+		gd.addMessage("refine_clamp:  removes points further away than the multiple of mean or median distance.\n"
+				+ "               The smaller of the two values, mean or median, is used for this condition!\n"
+				+ "refine_sd:     removes points further away then multiple of std dev distance.\n"
+				+ "refine_clip:   removes percentage of points with highest distance.\n"
+				+ "refine_sparse: removes percentage of all points\n"
+				+ "refine_unique: all nearest points (very slow)");
+		gd.addMessage("");
+
+		// refine_clamp = kill all points farther away than a multiple of the last reported mean distance and a multiple
+		// of the current median distance
+		// refine_clip = kill percentage of points with highest distance
+		// (approximated value from non-transformed distance values)
+		// refine_sparse = kill a certain percentage of points.
+		// refine_unique = all nearest points (very slow).
+		gd.addMessage("Parameters: ");
+		gd.addNumericField("refine_clamp: multiple of mean/med error: ", refine_clamp_par, 2);
+		gd.addNumericField("refine_sd: multiple of sd: ", refine_sd_par, 2);
+		gd.addNumericField("refine_clip: percentage (0.0 - 1.0): ", refine_clip_par, 2);
+		gd.addNumericField("refine_sparce: percentage (0.0 - 1.0): ", refine_sparse_par, 2);
+		gd.addNumericField("minimum valid points: ", minimum_valid_points, 0);
+		gd.addCheckbox("a-priori landmarks: ", refine_a_priori_landmark);
+		gd.addCheckbox("a-priori diff slider: ", refine_a_priori_diff_slider);
+		gd.addCheckbox("use Landmark mask: ", use_landmark_mask);
+		gd.addMessage("");
+
+		gd.addCheckbox("Check to save resulting matrix: ", saveMatrixFileFlag);
+		gd.addMessage("");
+		gd.addChoice("Interpolation Method (Difference Image): ", interpolationMethod, interpolationMethod[interpol]);
+		gd.addMessage("");
+
+		// KHK todo... load matrix hat noch Fehler... Abfragen ergänzen
+		// KHK todo... set working directory ergänzen
+
+		gd.addStringField("Matrix file:", file, 30);
+
+		gd.addMessage("");
+		gd.addMessage("Developed by Karl-Heinz Kunzelmann.\nBased on plenty of code from the Internet\n");
+
+		gd.showDialog();
+
+		if (gd.wasCanceled())
+			return false;
+
+		int index1 = gd.getNextChoiceIndex();
+		title1 = titles[index1];
+
+		int index2 = gd.getNextChoiceIndex();
+		title2 = titles[index2];
+
+		imp1 = WindowManager.getImage(wList[index1]);
+		imp2 = WindowManager.getImage(wList[index2]);
+
+		// parameters to initialize the icp algorithm
+
+		scheme = gd.getNextChoiceIndex();
+
+		refine_clamp_par = gd.getNextNumber();
+		refine_sd_par = gd.getNextNumber();
+		refine_clip_par = gd.getNextNumber();
+		refine_sparse_par = gd.getNextNumber();
+		minimum_valid_points = (int) gd.getNextNumber();
+		refine_a_priori_landmark = gd.getNextBoolean();
+		refine_a_priori_diff_slider = gd.getNextBoolean();
+		use_landmark_mask = gd.getNextBoolean();
+		saveMatrixFileFlag = gd.getNextBoolean();
+
+		interpol = gd.getNextChoiceIndex();
+
+		file = gd.getNextString();
+
+		if (file == null || !file.equals("")) {
+			loadMatrixFileFlag = true;
+			transformationMatrix = (new ReadMatrix()).run(file);
+		}
+
+		if (index1 == index2) {
+			IJ.error("Information:\n\nImage 1 and 2 are identical. Will continue. \nBut take care with the result!");
+		}
+		// plausibility check
+		if (refine_clip_par < 0.0 || refine_clip_par > 1.0) {
+			refine_clip_par = 0.90; // default
+		}
+
+		if (refine_sparse_par < 0.0 || refine_sparse_par > 1.0) {
+			refine_sparse_par = 0.5;
+		}
+
+		if (minimum_valid_points < 3) {
+			minimum_valid_points = 3;
+		}
+
+		switch (scheme) {
+			case 0:
+				refine_clamp = true;
+				refine_sd = false;
+				refine_clip = false;
+				refine_sparse = false;
+				refine_unique = false;
+				break;
+			case 1:
+				refine_clamp = false;
+				refine_sd = true;
+				refine_clip = false;
+				refine_sparse = false;
+				refine_unique = false;
+				break;
+			case 2:
+				refine_clamp = false;
+				refine_sd = false;
+				refine_clip = true;
+				refine_sparse = false;
+				refine_unique = false;
+				break;
+			case 3:
+				refine_clamp = false;
+				refine_sd = false;
+				refine_clip = false;
+				refine_sparse = true;
+				refine_unique = false;
+				break;
+			case 4:
+				refine_clamp = false;
+				refine_sd = false;
+				refine_clip = false;
+				refine_sparse = false;
+				refine_unique = true;
+				break;
+		}
+
+		refineParameters = new ParameterICP(refine_clamp, refine_clamp_par, refine_sd, refine_sd_par, refine_clip,
+				refine_clip_par, refine_sparse, refine_sparse_par, refine_unique, minimum_valid_points,
+				refine_a_priori_landmark, refine_a_priori_diff_slider, use_landmark_mask);
+		System.out.println(refineParameters.toString());
+
+		return true;
+
+	}
+
+	private void showDiffSlider(double min, double max, double defaultValue) {
+		NonBlockingGenericDialog gd = new NonBlockingGenericDialog("KHKs Match3D - Histogram");
+		gd.addSlider("Diff Slider", min, max, defaultValue, 0.1);
+		gd.addDialogListener(this);
+
+		gd.showDialog();
+	}
+
+	/**
+	 * Listener to modifications of the input fields of the dialog.
+	 * Here the parameters should be read from the input dialog.
+	 *
+	 * @param gd The GenericDialog that the input belongs to
+	 * @param e  The input event
+	 * @return whether the input is valid and the filter may be run with these parameters
+	 */
+	@Override
+	public boolean dialogItemChanged(GenericDialog gd, AWTEvent e) {
+		double percentage = gd.getNextNumber();
+		System.out.println(percentage);
+		ImagePlus ip = WindowManager.getImage("TransformedPostICP");
+
+		ImageProcessor ipTransformedImage = ip.getProcessor();
+		ImageProcessor ipTransformedImageOriginal = ipOriginal.getProcessor();
+
+		for (int i = 0; i < ipTransformedImage.getHeight(); i++) {
+			for (int j = 0; j < ipTransformedImage.getWidth(); j++) {
+				ipTransformedImage.setf(j, i, (float) (ipTransformedImageOriginal.getf(j, i) - percentage));
+			}
+		}
+		ip.updateAndRepaintWindow();
+		return !gd.invalidNumber();
+	}
+
+    /*##################################################################################################################
+	*
+	* 											HELPER METHODS
+	*
+	##################################################################################################################*/
+
+	// KHK todo auslagern in utility class
+	public static ImageProcessor setZeroToNan(ImageProcessor ip) {
+
+		int width = ip.getWidth();
+		int height = ip.getHeight();
+		int length = width * height;
+
+		// define an array which referes to the pixels of the image
+
+		float[] arrayOfImagePixels = (float[]) ip.getPixels();
+
+		for (int a = 0; a < length; a++) {
+			if (arrayOfImagePixels[a] == 0.0) {
+				arrayOfImagePixels[a] = Float.NaN;
+			}
+		}
+		return ip;
+	}
+
+	private ImagePlus makeTarget(ImagePlus imp1) {
+		// ip1 = baseline image which will not be transformed but we use it as a template for the transformed image.
+
+		// I need a blank image to get the rotated img1 as we want to subtract it later from the basline image (= img1)
+		// the size and pixelDimensions are identical with img1
+		this.ip1 = imp1.getProcessor();
+
+		int w = this.ip1.getWidth();
+		int h = this.ip1.getHeight();
+
+		// debugging:
+
+		System.out.println("2014 Dimensions Image1 w x t: " + w + " x " + h);
+
+		// Syntax: NewImage.createFloatImage(java.lang.String title, int width, int height, int slices, int options)
+		ImagePlus impTransformedImage = NewImage.createFloatImage("Result-rotatedImg1", w, h, 1, NewImage.FILL_BLACK);
+
+		// need to apply the unit scale to the new image
+		impTransformedImage.copyScale(imp1);
+
+		return impTransformedImage;
+
+	}
 
     // added for future reference: in case we want to read wavefront.obj files directly.
     // copied from ICPDemoApplet.java
@@ -1583,6 +1542,12 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
     }
 
 }
+
+/*######################################################################################################################
+*
+* 										READ & WRITE MATRIX CLASSES
+*
+######################################################################################################################*/
 
 // KHK why use an inner class instead of a method?
 // An instance of InnerClass can exist only within an instance of OuterClass and has direct access to the methods and
