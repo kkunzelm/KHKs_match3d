@@ -17,10 +17,7 @@ import datastruct.KDNode;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.WindowManager;
-import ij.gui.GenericDialog;
-import ij.gui.NewImage;
-import ij.gui.PolygonRoi;
-import ij.gui.Roi;
+import ij.gui.*;
 import ij.io.FileInfo;
 import ij.plugin.ContrastEnhancer;
 import ij.plugin.PlugIn;
@@ -83,7 +80,7 @@ import vecmath.Vector3d;
  * @version 0.1
  * 
  */
-public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn {
+public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogListener {
 
 	private static final String[] schemes = {"refine_clamp", "refine_sd", "refine_clip", "refine_sparse",
 			"refine_unique"};
@@ -142,6 +139,10 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn {
 	private double[][] correlationMatrixK = new double[3][3];
 	private double[][] rotationMatrixR = new double[3][3];
 	private double[][] invRotationMatrixInvR = new double[3][3];
+
+	float[] differences;
+	ImagePlus impTransformedImageICP;
+	ImagePlus ipOriginal;
 
 	/*
 	 * Later to get homogeneous coordinates:
@@ -722,7 +723,7 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn {
 		// tMat);
 
 		// apply transformation matrix
-		ImagePlus impTransformedImageICP = makeTarget(imp1);
+		impTransformedImageICP = makeTarget(imp1);
 		impTransformedImageICP.setTitle("TransformedPostICP");
 		applyGeneralTransformation3D(imp1, imp2, impTransformedImageICP, tMat); // tMat = Transformationsmatrix
 
@@ -733,7 +734,38 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn {
 		//
 		// XYZ2DEM_ImporterHack hack0 = new XYZ2DEM_ImporterHack();
 		// hack0.khkDisplayXYZ(vectorListImg2);
+	}
 
+	private void showDiffSlider(double min, double max, double defaultValue){
+		NonBlockingGenericDialog gd = new NonBlockingGenericDialog("KHKs Match3D - Histogram");
+		gd.addSlider("Diff Slider", min, max, defaultValue, 0.1);
+		gd.addDialogListener(this);
+
+		gd.showDialog();
+	}
+
+	/** Listener to modifications of the input fields of the dialog.
+	 *  Here the parameters should be read from the input dialog.
+	 *  @param gd The GenericDialog that the input belongs to
+	 *  @param e  The input event
+	 *  @return whether the input is valid and the filter may be run with these parameters
+	 */
+	@Override
+	public boolean dialogItemChanged (GenericDialog gd, AWTEvent e) {
+		double percentage = gd.getNextNumber();
+		System.out.println(percentage);
+		ImagePlus ip = WindowManager.getImage("TransformedPostICP");
+
+		ImageProcessor ipTransformedImage = ip.getProcessor();
+		ImageProcessor ipTransformedImageOriginal = ipOriginal.getProcessor();
+
+		for (int i = 0; i < ipTransformedImage.getHeight(); i++) {
+			for (int j = 0; j < ipTransformedImage.getWidth(); j++) {
+				ipTransformedImage.setf(j, i, (float)(ipTransformedImageOriginal.getf(j,i) - percentage));
+			}
+		}
+		ip.updateAndRepaintWindow();
+		return !gd.invalidNumber();
 	}
 
 	/**
@@ -1474,6 +1506,10 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn {
 		double scalex = fi.pixelWidth;
 		double scaley = fi.pixelHeight;
 
+		differences = new float[(int) (w*h)];
+		int ctr = 0;
+		float mean = 0;
+
 		for (int v = 0; v < h; v++) { // rows of the image
 			for (int u = 0; u < w; u++) { // columns of the image
 
@@ -1536,6 +1572,11 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn {
 
 				diff = (float) (pointInvTransformed.get(2, 0) - tempz); // difference
 
+				if(!Float.isNaN(diff)) {
+					differences[ctr++] = diff;
+					mean += diff;
+				}
+
 				ipTransformedImage.setf(u, v, diff);
 
 				printInfos = false; // need to know the details only once
@@ -1560,6 +1601,58 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn {
 		differenceImage.show();
 		// System.out.println ("TransformationMatrix: "+
 		// Arrays.deepToString(transformationMatrix));
+
+		mean = mean / ctr;
+		double var = 0.0;
+
+		for (int i = 0; i < ctr; i++) {
+			if(!Float.isNaN(differences[i]))
+				var += (differences[i] - mean) * (differences[i] - mean);
+		}
+
+		double variance = var / (ctr - 1);
+		double stddev = Math.sqrt(variance);
+		
+		double lo = mean - 1.96 * stddev;
+		double hi = mean + 1.96 * stddev;
+
+		System.out.println("########## CONFIDENCE ############");
+		System.out.println(Arrays.toString(differences));
+		System.out.println("average          = " + mean);
+		System.out.println("sample variance  = " + variance);
+		System.out.println("sample stddev    = " + stddev);
+		System.out.println("95% approximate confidence interval");
+		System.out.println("[ " + lo + ", " + hi + " ]");
+		System.out.println("##################################");
+
+		Arrays.sort(differences);
+		float minDiff = differences[0];
+		float maxDiff = differences[differences.length - 1];
+
+		ipOriginal = impTransformedImageICP.duplicate();
+		showDiffSlider(minDiff, maxDiff, hi);
+
+//		int bins = 255;
+//		float binSize = (Math.abs(minDiff) + Math.abs(maxDiff)) / bins;
+//		System.out.println(binSize + "= binSize");
+//		ArrayList<Float>[] hist = new ArrayList[bins];
+//		for (int i = 0; i < bins; i++) {
+//			hist[i] = new ArrayList<Float>();
+//		}
+//
+//		int binCtr = 1;
+//		for (int i = 0; i < differences.length; i++) {
+//			if(differences[i] <= binCtr * binSize + minDiff && binCtr < bins) {
+//				hist[binCtr-1].add(differences[i]);
+//			} else {
+//				binCtr++;
+//			}
+//		}
+//
+//		for (int i = 0; i < hist.length; i++) {
+//			System.out.println(hist[i].toString());
+//		}
+
 	}
 
 	private double nearestNeighborInterpolation(ImagePlus imp2, Matrix pointInvTransformed) {
