@@ -133,85 +133,15 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 	##################################################################################################################*/
 
     public void run(String arg) {
-
-        // check: is there an open image?
-        wList = WindowManager.getIDList();
-        if (wList == null) {
-            IJ.noImage();
-            return;
-        }
-
-        // check: we need at least 2 images for matching
-        titles = new String[wList.length];
-        if (wList.length < 2) {
-            IJ.error("At least two match3d images (type float or Gray32) are required");
-            return;
-        }
-
-        // make a list of image titles of all open images
-        for (int i = 0; i < wList.length; i++) {
-            ImagePlus imp = WindowManager.getImage(wList[i]);
-            if (imp != null) {
-                titles[i] = imp.getTitle();
-            } else {
-                titles[i] = "";
-            }
-        }
-
-        for (int i = 0; i < wList.length; i++) {
-            ImagePlus imp = WindowManager.getImage(wList[i]);
-            if (imp != null) {
-                ImageConverter imageConverter = new ImageConverter(imp);
-                imageConverter.convertToGray32();
-            }
-        }
-
-        // user interaction to get matching parameters
-        if (!showDialog()) {
-            return;
-        }
-
-        // ***********************************************************
+        //--------------------------------------------------------------------------------------------------------------
         // some tests to be sure everything is fine before we start
+        //--------------------------------------------------------------------------------------------------------------
 
-        // in this case a polygon is used to mark corresponding points we have to check that there are polygon ROIs
-		// marked in both images
-		// in medicine corresponding points are sometimes called fiducial marks or ficudial markers
-        // I have also read the term "landmarks" in some papers
+        // get list of images & check for correct image type and number
+        if (checkIJImageList()) return;
 
-        // convention in my code:
-        PolygonRoi polyRoiSource = (PolygonRoi) imp1.getRoi();
-        if (polyRoiSource == null) {
-            IJ.error("Error SourceImage: PlugIn requires Polygon ROI!");
-            return;
-        }
-
-        if (polyRoiSource.getType() != Roi.POLYGON) {
-            IJ.error("Error SourceImage: PlugIn requires Polygon ROI!!");
-            return;
-        }
-
-        // the "source" image is usually indentified with the index number 1
-        // the "target" image is usually indentified with the index number 2
-        PolygonRoi polyRoiTarget = (PolygonRoi) imp2.getRoi();
-        if (polyRoiTarget == null) {
-            IJ.error("Error TargetImage: PlugIn requires Polygon ROI!");
-            return;
-        }
-
-        if (polyRoiTarget.getType() != Roi.POLYGON) {
-            IJ.error("Error TargetImage: PlugIn requires Polygon ROI!!");
-            return;
-        }
-
-        // the number of corresponding landmarks has to be the same in both images
-        int lengthSource = polyRoiSource.getNCoordinates();
-        int lengthTarget = polyRoiTarget.getNCoordinates();
-
-        if (lengthSource != lengthTarget) {
-            IJ.error("Error: the number of points between the source and target polylines differs");
-            return;
-        }
+        // check for correct polygon selection
+        if (checkLandmarkPolygons()) return;
 
         // ***************** shortcut ************ ***************
         // shortcut: Matrix file loaded... can be applied directly
@@ -223,7 +153,9 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         }
 
         // ***************** lets start the real work ***************
-        //
+        //--------------------------------------------------------------------------------------------------------------
+        // get landmark centroids
+        //--------------------------------------------------------------------------------------------------------------
 
         List<Vector3d> landmarks1 = getCorrespondingPointListFromPolygonRoi(imp1, (PolygonRoi) imp1.getRoi());
         List<Vector3d> landmarks2 = getCorrespondingPointListFromPolygonRoi(imp2, (PolygonRoi) imp2.getRoi());
@@ -240,6 +172,10 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
             System.out.println("PolygonRoi Centroids Landmarks1: " + Arrays.toString(centroidLandmarks1));
             System.out.println("PolygonRoi Centroids Landmarks2: " + Arrays.toString(centroidLandmarks2));
         }
+
+        //--------------------------------------------------------------------------------------------------------------
+        // calculate landmark rotation
+        //--------------------------------------------------------------------------------------------------------------
 
         correlationMatrixK = correlationMatrixK(relativeLandmarks1, relativeLandmarks2);
 
@@ -273,7 +209,15 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
             rotTimeInv.print(9, 6);
         }
 
+        //--------------------------------------------------------------------------------------------------------------
+        // calculate landmark translation
+        //--------------------------------------------------------------------------------------------------------------
+
         double[] translation = computeTranslation(centroidLandmarks1, centroidLandmarks2, rotationMatrixR);
+
+        //--------------------------------------------------------------------------------------------------------------
+        // calculate transformation matrix
+        //--------------------------------------------------------------------------------------------------------------
 
         double[][] transformationMatrix = populateTransformationMatrix(rotationMatrixR, translation);
         if (debug = true) {
@@ -323,6 +267,9 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
          */
 
         // ***** KHK Grobjustierung fertig, Vorbereitung für ICP
+        //--------------------------------------------------------------------------------------------------------------
+        // prepare for ICP
+        //--------------------------------------------------------------------------------------------------------------
 
         Point3d[] vectorArrayImg1;
         vectorArrayImg1 = getCorrespondingPointListFromImageDataAsArray(imp1);
@@ -385,6 +332,9 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 
         ICPAlgorithm2014 icp = new ICPAlgorithm2014();
 
+        //--------------------------------------------------------------------------------------------------------------
+        // run ICP
+        //--------------------------------------------------------------------------------------------------------------
         // initialization of ICP algorithm
         icp.init(vectorArrayImg1, vectorArrayImg2, modelTree, modelCorner0, modelCorner1, rotMatrix, trans,
                 refineParameters, centroidLandmarks1, centroidLandmarks2);
@@ -397,6 +347,9 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
             new WriteMatrix().run(tMat);
         }
 
+        //--------------------------------------------------------------------------------------------------------------
+        // apply transformation to new image
+        //--------------------------------------------------------------------------------------------------------------
         // make the target image for the translation hier: source to target
         // ImagePlus impForwardTransformedImageICP = makeTarget(imp1);
         // impForwardTransformedImageICP.setTitle("ForwardTransformedPostICP");
@@ -420,67 +373,6 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 	* 												LANDMARKS
 	*
 	##################################################################################################################*/
-
-    private Point3d[] getCorrespondingPointListFromImageDataAsArray(ImagePlus imp) {
-
-        int count = 0;
-
-        ImageProcessor ip = imp.getProcessor();
-
-        FileInfo fi;
-        fi = imp.getFileInfo();
-        System.out.println("Pixel-Width: " + fi.pixelWidth);
-
-        Point3d[] vectorArray = new Point3d[(ip.getHeight() * ip.getWidth())];
-
-        for (int i = 0; i < (ip.getHeight() * ip.getWidth()); i++) {
-            vectorArray[i] = new Point3d();
-        }
-
-        for (int i = 0; i < ip.getHeight(); i++) {
-            for (int j = 0; j < ip.getWidth(); j++) {
-
-                if (ip.getf(j, i) != 0.0) {
-                    vectorArray[count].z = ip.getf(j, i);
-                    vectorArray[count].x = j * fi.pixelWidth;
-                    vectorArray[count].y = i * fi.pixelHeight;
-                    count = count + 1;
-                }
-
-                if (Float.isNaN(ip.getf(j, i))) {
-                    count = count - 1;
-                }
-            }
-        }
-
-        /*
-         * for debugging ImageProcessor ipnew;
-         *
-         * ipnew = new FloatProcessor(ip.getWidth(), ip.getHeight());
-         *
-         *
-         * // Adjust brightness and contrast: ip.resetMinAndMax();
-         *
-         * for (int i=0; i < ip.getHeight(); i++){ for(int j= 0; j < ip.getWidth();
-         * j++){ ipnew.putPixelValue(j,i,vectorArray[ip.getWidth()*i+j].z) ; //} //
-         * System.out.println("    x,y und Pos: "+j + ", " + i + "und" +
-         * (ip.getWidth()*i+j)); //System.out.println("   i*ip.getHeight()+j"+
-         * (i*ip.getHeight()+j)); } //System.out.println("i: "+i); }
-         *
-         * // Show image: //new ImagePlus("XYZ_Import", ip).show(); new
-         * ImagePlus("debugKHK", ipnew).show(); //new ImagePlus(fileTIF, ipnew).show();
-         *
-         */
-        // remove zeros
-        Point3d[] trimmedVectorArray = new Point3d[count];
-        System.arraycopy(vectorArray, 0, trimmedVectorArray, 0, count);
-
-        System.out.println("vectorArray-Länge: " + vectorArray.length);
-        System.out.println("Active now: trimmedVectorArray: " + trimmedVectorArray.length);
-        // System.out.println(Arrays.toString(trimmedVectorArray));
-
-        return trimmedVectorArray;
-    }
 
     /**
      * Returns ArrayList of Vector3d
@@ -1448,7 +1340,7 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 
     /*##################################################################################################################
 	*
-	* 											HELPER METHODS
+	* 										IMAGEJ HELPER METHODS
 	*
 	##################################################################################################################*/
 
@@ -1494,6 +1386,149 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 		return impTransformedImage;
 
 	}
+
+    private boolean checkIJImageList() {
+        // check: is there an open image?
+        wList = WindowManager.getIDList();
+        if (wList == null) {
+            IJ.noImage();
+            return true;
+        }
+
+        // check: we need at least 2 images for matching
+        titles = new String[wList.length];
+        if (wList.length < 2) {
+            IJ.error("At least two match3d images (type float or Gray32) are required");
+            return true;
+        }
+
+        // make a list of image titles of all open images
+        for (int i = 0; i < wList.length; i++) {
+            ImagePlus imp = WindowManager.getImage(wList[i]);
+            if (imp != null) {
+                titles[i] = imp.getTitle();
+            } else {
+                titles[i] = "";
+            }
+        }
+
+        for (int i = 0; i < wList.length; i++) {
+            ImagePlus imp = WindowManager.getImage(wList[i]);
+            if (imp != null) {
+                ImageConverter imageConverter = new ImageConverter(imp);
+                imageConverter.convertToGray32();
+            }
+        }
+
+        // user interaction to get matching parameters
+        if (!showDialog()) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean checkLandmarkPolygons() {
+        // in this case a polygon is used to mark corresponding points we have to check that there are polygon ROIs
+        // marked in both images
+        // in medicine corresponding points are sometimes called fiducial marks or ficudial markers
+        // I have also read the term "landmarks" in some papers
+
+        // convention in my code:
+        PolygonRoi polyRoiSource = (PolygonRoi) imp1.getRoi();
+        if (polyRoiSource == null) {
+            IJ.error("Error SourceImage: PlugIn requires Polygon ROI!");
+            return true;
+        }
+
+        if (polyRoiSource.getType() != Roi.POLYGON) {
+            IJ.error("Error SourceImage: PlugIn requires Polygon ROI!!");
+            return true;
+        }
+
+        // the "source" image is usually indentified with the index number 1
+        // the "target" image is usually indentified with the index number 2
+        PolygonRoi polyRoiTarget = (PolygonRoi) imp2.getRoi();
+        if (polyRoiTarget == null) {
+            IJ.error("Error TargetImage: PlugIn requires Polygon ROI!");
+            return true;
+        }
+
+        if (polyRoiTarget.getType() != Roi.POLYGON) {
+            IJ.error("Error TargetImage: PlugIn requires Polygon ROI!!");
+            return true;
+        }
+
+        // the number of corresponding landmarks has to be the same in both images
+        int lengthSource = polyRoiSource.getNCoordinates();
+        int lengthTarget = polyRoiTarget.getNCoordinates();
+
+        if (lengthSource != lengthTarget) {
+            IJ.error("Error: the number of points between the source and target polylines differs");
+            return true;
+        }
+        return false;
+    }
+
+    private Point3d[] getCorrespondingPointListFromImageDataAsArray(ImagePlus imp) {
+
+        int count = 0;
+
+        ImageProcessor ip = imp.getProcessor();
+
+        FileInfo fi;
+        fi = imp.getFileInfo();
+        System.out.println("Pixel-Width: " + fi.pixelWidth);
+
+        Point3d[] vectorArray = new Point3d[(ip.getHeight() * ip.getWidth())];
+
+        for (int i = 0; i < (ip.getHeight() * ip.getWidth()); i++) {
+            vectorArray[i] = new Point3d();
+        }
+
+        for (int i = 0; i < ip.getHeight(); i++) {
+            for (int j = 0; j < ip.getWidth(); j++) {
+
+                if (ip.getf(j, i) != 0.0) {
+                    vectorArray[count].z = ip.getf(j, i);
+                    vectorArray[count].x = j * fi.pixelWidth;
+                    vectorArray[count].y = i * fi.pixelHeight;
+                    count = count + 1;
+                }
+
+                if (Float.isNaN(ip.getf(j, i))) {
+                    count = count - 1;
+                }
+            }
+        }
+
+        /*
+         * for debugging ImageProcessor ipnew;
+         *
+         * ipnew = new FloatProcessor(ip.getWidth(), ip.getHeight());
+         *
+         *
+         * // Adjust brightness and contrast: ip.resetMinAndMax();
+         *
+         * for (int i=0; i < ip.getHeight(); i++){ for(int j= 0; j < ip.getWidth();
+         * j++){ ipnew.putPixelValue(j,i,vectorArray[ip.getWidth()*i+j].z) ; //} //
+         * System.out.println("    x,y und Pos: "+j + ", " + i + "und" +
+         * (ip.getWidth()*i+j)); //System.out.println("   i*ip.getHeight()+j"+
+         * (i*ip.getHeight()+j)); } //System.out.println("i: "+i); }
+         *
+         * // Show image: //new ImagePlus("XYZ_Import", ip).show(); new
+         * ImagePlus("debugKHK", ipnew).show(); //new ImagePlus(fileTIF, ipnew).show();
+         *
+         */
+        // remove zeros
+        Point3d[] trimmedVectorArray = new Point3d[count];
+        System.arraycopy(vectorArray, 0, trimmedVectorArray, 0, count);
+
+        System.out.println("vectorArray-Länge: " + vectorArray.length);
+        System.out.println("Active now: trimmedVectorArray: " + trimmedVectorArray.length);
+        // System.out.println(Arrays.toString(trimmedVectorArray));
+
+        return trimmedVectorArray;
+    }
 
     // added for future reference: in case we want to read wavefront.obj files directly.
     // copied from ICPDemoApplet.java
