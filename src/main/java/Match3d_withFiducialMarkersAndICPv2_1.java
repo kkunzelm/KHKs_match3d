@@ -123,7 +123,7 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
     private double[][] correlationMatrixK = new double[3][3];
 
     float[] differences;
-    ImagePlus impTransformedImageICP;
+    ImagePlus impTransformedImage;
     ImagePlus ipOriginal;
 
     /*##################################################################################################################
@@ -146,7 +146,7 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         // ***************** shortcut ************ ***************
         // shortcut: Matrix file loaded... can be applied directly
         if (loadMatrixFileFlag) {
-            ImagePlus impTransformedImage = makeTarget(imp1);
+            impTransformedImage = makeTarget(imp1);
             impTransformedImage.setTitle("TransformedLoadedFromMatix");
             applyGeneralTransformation3D(imp1, imp2, impTransformedImage, transformationMatrix);
             return;
@@ -356,9 +356,9 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         // applyGeneralForwardTransformation3D(imp2, impForwardTransformedImageICP, tMat);
 
         // apply transformation matrix
-        impTransformedImageICP = makeTarget(imp1);
-        impTransformedImageICP.setTitle("TransformedPostICP");
-        applyGeneralTransformation3D(imp1, imp2, impTransformedImageICP, tMat); // tMat = Transformationsmatrix
+        impTransformedImage = makeTarget(imp1);
+        impTransformedImage.setTitle("TransformedPostICP");
+        applyGeneralTransformation3D(imp1, imp2, impTransformedImage, tMat); // tMat = Transformationsmatrix
 
         // ********************************************
         // Dieses Programm ist eine coole Implementierung der Projektion von irregulären xyz-Koordinaten und deren
@@ -849,7 +849,8 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
             float minDiff = differences[0];
             float maxDiff = differences[differences.length - 1];
 
-            ipOriginal = impTransformedImageICP.duplicate();
+            // duplicate original transformation for reference values in diff slider
+            ipOriginal = impTransformedImage.duplicate();
             showDiffSlider(minDiff, maxDiff, hi);
         }
     }
@@ -1324,9 +1325,8 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 	public boolean dialogItemChanged(GenericDialog gd, AWTEvent e) {
 		double percentage = gd.getNextNumber();
 		System.out.println(percentage);
-		ImagePlus ip = WindowManager.getImage("TransformedPostICP");
 
-		ImageProcessor ipTransformedImage = ip.getProcessor();
+		ImageProcessor ipTransformedImage = impTransformedImage.getProcessor();
 		ImageProcessor ipTransformedImageOriginal = ipOriginal.getProcessor();
 
 		for (int i = 0; i < ipTransformedImage.getHeight(); i++) {
@@ -1334,7 +1334,8 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 				ipTransformedImage.setf(j, i, (float) (ipTransformedImageOriginal.getf(j, i) - percentage));
 			}
 		}
-		ip.updateAndRepaintWindow();
+
+		impTransformedImage.updateAndRepaintWindow();
 		return !gd.invalidNumber();
 	}
 
