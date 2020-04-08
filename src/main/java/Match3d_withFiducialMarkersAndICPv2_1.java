@@ -3,13 +3,8 @@ import static java.lang.Math.rint;
 import java.awt.*;
 import java.io.*;
 import java.net.URL;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.util.*;
 import java.util.List;
-
-import javax.swing.*;
-import javax.swing.filechooser.FileNameExtensionFilter;
 
 import Jama.Matrix;
 import Jama.SingularValueDecomposition;
@@ -103,9 +98,10 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
     private double refine_sparse_par = 0.50;
     private boolean refine_unique = false; // klingt als ob jeder Punkt berücksichtigt wird
     private int minimum_valid_points = 800; // Anzahl der minimal notwendigen Punkte
-    private boolean refine_a_priori_landmark = true;
-    private boolean refine_a_priori_diff_slider = true;
-    private boolean use_landmark_mask = true;
+    private boolean refine_a_priori_landmark = false;
+    private boolean refine_a_priori_confidence_interval = false;
+    private boolean refine_a_priori_show_diff_slider = false;
+    private boolean use_landmark_mask = false;
     private ParameterICP refineParameters;
     private String title1 = "";
     private String title2 = "";
@@ -122,7 +118,7 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 
     private double[][] correlationMatrixK = new double[3][3];
 
-    float[] differences;
+    double[] differences;
     ImagePlus impTransformedImage;
     ImagePlus ipOriginal;
 
@@ -735,9 +731,9 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         double scalex = fi.pixelWidth;
         double scaley = fi.pixelHeight;
 
-        differences = new float[(w * h)];
+        differences = new double[(w * h)];
         int ctr = 0;
-        float mean = 0;
+        double mean = 0;
 
         for (int v = 0; v < h; v++) { // rows of the image
             for (int u = 0; u < w; u++) { // columns of the image
@@ -821,41 +817,26 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
         differenceImage.updateAndDraw();
         differenceImage.show();
 
-        if (refine_a_priori_diff_slider) {
-            mean = mean / ctr;
-            double var = 0.0;
-
-            for (int i = 0; i < ctr; i++) {
-                if (!Float.isNaN(differences[i]))
-                    var += (differences[i] - mean) * (differences[i] - mean);
-            }
-
-            double variance = var / (ctr - 1);
-            double stddev = Math.sqrt(variance);
-
-            double lo = mean - 1.96 * stddev;
-            double hi = mean + 1.96 * stddev;
-
-            System.out.println("########## CONFIDENCE ############");
-            System.out.println(Arrays.toString(differences));
-            System.out.println("average          = " + mean);
-            System.out.println("sample variance  = " + variance);
-            System.out.println("sample stddev    = " + stddev);
-            System.out.println("95% approximate confidence interval");
-            System.out.println("[ " + lo + ", " + hi + " ]");
-            System.out.println("##################################");
-
-            Arrays.sort(differences);
-            float minDiff = differences[0];
-            float maxDiff = differences[differences.length - 1];
-
-            // duplicate original transformation for reference values in diff slider
+        DiffImageStats stats = new DiffImageStats(mean, ctr, differences);
+        if (refine_a_priori_confidence_interval) {
+            // duplicate original transformation for reference values in image subtraction
             ipOriginal = impTransformedImage.duplicate();
-            showDiffSlider(minDiff, maxDiff, hi);
+
+            if(refine_a_priori_show_diff_slider)
+                showDiffSlider(stats.getMinDiff(), stats.getMaxDiff(), stats.getHi());
+            else
+                subtractImages(stats.getHi());
+        }
+
+        if (refine_a_priori_show_diff_slider && !refine_a_priori_confidence_interval) {
+            // duplicate original transformation for reference values in image subtraction
+            ipOriginal = impTransformedImage.duplicate();
+
+            showDiffSlider(stats.getMinDiff(), stats.getMaxDiff(), 0);
         }
     }
 
-	public static Matrix getInverseTransformationMatrix(double[][] transformationMatrix, boolean printInfos) {
+    public static Matrix getInverseTransformationMatrix(double[][] transformationMatrix, boolean printInfos) {
 		/*
 		 * Later to get homogeneous coordinates:
 		 *
@@ -1187,9 +1168,11 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 		gd.addNumericField("refine_clip: percentage (0.0 - 1.0): ", refine_clip_par, 2);
 		gd.addNumericField("refine_sparce: percentage (0.0 - 1.0): ", refine_sparse_par, 2);
 		gd.addNumericField("minimum valid points: ", minimum_valid_points, 0);
-		gd.addCheckbox("a-priori landmarks: ", refine_a_priori_landmark);
-		gd.addCheckbox("a-priori diff slider: ", refine_a_priori_diff_slider);
-		gd.addCheckbox("use Landmark mask: ", use_landmark_mask);
+		gd.addCheckbox("a-priori: use matching landmarks as z-value truth", refine_a_priori_landmark);
+		gd.addCheckbox("a-priori: use 95% approximate confidence interval", refine_a_priori_confidence_interval);
+        gd.addCheckbox("a-priori: show diff-slider & histogram ", refine_a_priori_show_diff_slider);
+		gd.addCheckbox("landmark mask: use coordinates with highest z-values in 5x5 mask around selected pixels",
+                use_landmark_mask);
 		gd.addMessage("");
 
 		gd.addCheckbox("Check to save resulting matrix: ", saveMatrixFileFlag);
@@ -1229,7 +1212,8 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 		refine_sparse_par = gd.getNextNumber();
 		minimum_valid_points = (int) gd.getNextNumber();
 		refine_a_priori_landmark = gd.getNextBoolean();
-		refine_a_priori_diff_slider = gd.getNextBoolean();
+		refine_a_priori_confidence_interval = gd.getNextBoolean();
+		refine_a_priori_show_diff_slider = gd.getNextBoolean();
 		use_landmark_mask = gd.getNextBoolean();
 		saveMatrixFileFlag = gd.getNextBoolean();
 
@@ -1298,7 +1282,8 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 
 		refineParameters = new ParameterICP(refine_clamp, refine_clamp_par, refine_sd, refine_sd_par, refine_clip,
 				refine_clip_par, refine_sparse, refine_sparse_par, refine_unique, minimum_valid_points,
-				refine_a_priori_landmark, refine_a_priori_diff_slider, use_landmark_mask);
+				refine_a_priori_landmark, refine_a_priori_confidence_interval, refine_a_priori_show_diff_slider,
+                use_landmark_mask);
 		System.out.println(refineParameters.toString());
 
 		return true;
@@ -1310,7 +1295,8 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 		gd.addSlider("Diff Slider", min, max, defaultValue, 0.1);
 		gd.addDialogListener(this);
 
-		gd.showDialog();
+        if (refine_a_priori_show_diff_slider)
+		    gd.showDialog();
 	}
 
 	/**
@@ -1323,21 +1309,23 @@ public class Match3d_withFiducialMarkersAndICPv2_1 implements PlugIn, DialogList
 	 */
 	@Override
 	public boolean dialogItemChanged(GenericDialog gd, AWTEvent e) {
-		double percentage = gd.getNextNumber();
-		System.out.println(percentage);
-
-		ImageProcessor ipTransformedImage = impTransformedImage.getProcessor();
-		ImageProcessor ipTransformedImageOriginal = ipOriginal.getProcessor();
-
-		for (int i = 0; i < ipTransformedImage.getHeight(); i++) {
-			for (int j = 0; j < ipTransformedImage.getWidth(); j++) {
-				ipTransformedImage.setf(j, i, (float) (ipTransformedImageOriginal.getf(j, i) - percentage));
-			}
-		}
+		double zValue = gd.getNextNumber();
+		subtractImages(zValue);
 
 		impTransformedImage.updateAndRepaintWindow();
 		return !gd.invalidNumber();
 	}
+
+	private void subtractImages(double zValue){
+        ImageProcessor ipTransformedImage = impTransformedImage.getProcessor();
+        ImageProcessor ipTransformedImageOriginal = ipOriginal.getProcessor();
+
+        for (int i = 0; i < ipTransformedImage.getHeight(); i++) {
+            for (int j = 0; j < ipTransformedImage.getWidth(); j++) {
+                ipTransformedImage.setf(j, i, (float) (ipTransformedImageOriginal.getf(j, i) - zValue));
+            }
+        }
+    }
 
     /*##################################################################################################################
 	*

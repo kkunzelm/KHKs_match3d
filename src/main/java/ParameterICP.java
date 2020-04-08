@@ -20,13 +20,15 @@ class ParameterICP {
 	private int minimum_valid_points; // Mindestanzahl gültiger Pixel;
 
 	private boolean refine_a_priori_landmark;
-	private boolean refine_a_priori_diff_slider;
+	private boolean refine_a_priori_confidence_interval;
+	private boolean refine_a_priori_show_diff_slider;
 	private boolean use_landmark_mask;
 
 	public ParameterICP(boolean refine_clamp, double refine_clamp_par, boolean refine_sd, double refine_sd_par,
 						boolean refine_clip, double refine_clip_par, boolean refine_sparse, double refine_sparse_par,
 						boolean refine_unique, int minimum_valid_points, boolean refine_a_priori_landmark,
-						boolean refine_a_priori_diff_slider, boolean use_landmark_mask) {
+						boolean refine_a_priori_confidence_interval, boolean refine_a_priori_show_diff_slider,
+						boolean use_landmark_mask) {
 		this.refine_clamp = refine_clamp;
 		this.refine_clamp_par = refine_clamp_par;
 		this.refine_sd = refine_sd;
@@ -38,7 +40,8 @@ class ParameterICP {
 		this.refine_unique = refine_unique;
 		this.minimum_valid_points = minimum_valid_points;
 		this.refine_a_priori_landmark = refine_a_priori_landmark;
-		this.refine_a_priori_diff_slider = refine_a_priori_diff_slider;
+		this.refine_a_priori_confidence_interval = refine_a_priori_confidence_interval;
+		this.refine_a_priori_show_diff_slider = refine_a_priori_show_diff_slider;
 		this.use_landmark_mask = use_landmark_mask;
 	}
 
@@ -130,12 +133,20 @@ class ParameterICP {
 		this.refine_a_priori_landmark = refine_a_priori_landmark;
 	}
 
-	public boolean getRefineAPrioriDiffSlider() {
-		return refine_a_priori_diff_slider;
+	public boolean getRefineAPrioriConfidenceInterval() {
+		return refine_a_priori_confidence_interval;
 	}
 
-	public void setRefineAPrioriDiffSlider(boolean refine_a_priori_diff_slider) {
-		this.refine_a_priori_diff_slider = refine_a_priori_diff_slider;
+	public void setRefineAPrioriConfidenceInterval(boolean refine_a_priori_confidence_interval) {
+		this.refine_a_priori_confidence_interval = refine_a_priori_confidence_interval;
+	}
+
+	public boolean getRefineAPrioriShowDiffSlider() {
+		return refine_a_priori_show_diff_slider;
+	}
+
+	public void setRefineAPrioriShowDiffSlider(boolean refine_a_priori_show_diff_slider) {
+		this.refine_a_priori_show_diff_slider = refine_a_priori_show_diff_slider;
 	}
 
 	public boolean getUseLandmarkMask() {
@@ -148,11 +159,13 @@ class ParameterICP {
 
 	@Override
 	public String toString() {
-		return "refine_clamp:\t" + refine_clamp + "\tParameter = " + refine_clamp_par + "\n" + "refine_clip:\t"
-				+ refine_clip + "\tParameter  = " + refine_clip_par + "\n" + "refine_sparse:\t" + refine_sparse
-				+ "\tParameter = " + refine_sparse_par + "\n" + "refine_unique:\t" + refine_unique
-				+ "refine_a_priori_landmark:\t" + refine_a_priori_landmark + "\n" + "refine_a_priori_diff_slider:\t"
-				+ refine_a_priori_diff_slider + "\n"+ "use_landmark_mask:\t" + use_landmark_mask;
+		return "refine_clamp:\t" + refine_clamp + "\tParameter = " + refine_clamp_par + "\n"
+				+ "refine_clip:\t" + refine_clip + "\tParameter  = " + refine_clip_par + "\n"
+				+ "refine_sparse:\t" + refine_sparse + "\tParameter = " + refine_sparse_par + "\n"
+				+ "refine_unique:\t" + refine_unique + "refine_a_priori_landmark:\t" + refine_a_priori_landmark + "\n"
+				+ "refine_a_priori_confidence_interval:\t" + refine_a_priori_confidence_interval + "\n"
+				+ "refine_a_priori_show_diff_slider:\t" + refine_a_priori_show_diff_slider + "\n"
+				+ "use_landmark_mask:\t" + use_landmark_mask;
 	}
 
 }
